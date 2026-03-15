@@ -58,6 +58,7 @@ const createArgs = {
   parent_id: tool.schema
     .number()
     .nullable()
+    .optional()
     .describe(
       'ID of an EXISTING parent todo to nest under. ' +
       'Call list first to get the ID. NULL for top-level. ' +
