@@ -58,11 +58,16 @@ const createArgs = {
   parent_id: tool.schema
     .number()
     .nullable()
-    .describe('ID of the parent todo. NULL for top-level. Call list first to resolve a name to an ID.'),
+    .describe(
+      'ID of an EXISTING parent todo to nest under. ' +
+      'Call list first to get the ID. NULL for top-level. ' +
+      'Do NOT use children if setting parent_id.'),
   children: tool.schema
     .array(tool.schema.record(tool.schema.string(), tool.schema.unknown()))
     .optional()
-    .describe('Nested child todos (same shape, recursive)'),
+    .describe(
+      'Nested child todos for creating a NEW tree in one shot. ' +
+      'Only use when parent_id is NULL. Never combine with parent_id.'),
   original_prompt: tool.schema
     .string()
     .describe('The original natural language request, verbatim'),
@@ -137,11 +142,13 @@ export function agentInstructions(alias: string): string {
 ## Todo Management (${alias} tools)
 
 When the user asks to create, update, delete, or list todos:
-- Always use the ${alias}_* tools — never output JSON directly
+- Always use the ${alias}__* tools — never output JSON directly
 - Always show the full tool output to the user exactly as returned, including Draft ID and reply instructions
-- Always call ${alias}_list first to resolve todo names to IDs before updating or deleting
+- Always call ${alias}__list first to resolve todo names to IDs before updating or deleting
 - Never guess or assume a todo ID
-- The draft/confirm flow is intentional: every mutating operation (create, update, delete) returns a draft that the user must explicitly accept, revise, or decline via the bot command shown in the output`;
+- The draft/confirm flow is intentional: every mutating operation (create, update, delete) returns a draft that the user must explicitly accept, revise, or decline via the bot command shown in the output
+- Never retry a create/update/delete if it returns a Draft ID — the draft was created successfully, just show it to the user
+- Never create multiple drafts for the same request`;
 }
 
 // ---------------------------------------------------------------------------
