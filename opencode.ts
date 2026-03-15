@@ -61,8 +61,10 @@ const createArgs = {
     .optional()
     .describe(
       'ID of an EXISTING parent todo to nest under. ' +
-      'Call list first to get the ID. NULL for top-level. ' +
-      'Do NOT use children if setting parent_id.'),
+      'OMIT this field entirely for top-level todos — do not pass null or "null". ' +
+      'Call list first to get the ID. ' +
+      'Do NOT use children if setting parent_id.'
+    ),
   children: tool.schema
     .array(tool.schema.record(tool.schema.string(), tool.schema.unknown()))
     .optional()
