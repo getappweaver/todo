@@ -1,0 +1,13 @@
+{
+  "name": "dm-bot-todo-plugin",
+  "version": "1.0.0",
+  "dmBot": {
+    "coreApiVersion": "^5.1.0"
+  },
+  "description": "Todo management plugin for dm-bot",
+  "type": "module",
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.2.21",
+    "@opencode-ai/sdk": "^1.2.16"
+  }
+}
