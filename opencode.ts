@@ -55,6 +55,10 @@ const createArgs = {
     .array(tool.schema.string())
     .nullable()
     .describe('Optional tags e.g. ["work", "personal"]'),
+  parent_id: tool.schema
+    .number()
+    .nullable()
+    .describe('ID of the parent todo. NULL for top-level. Call list first to resolve a name to an ID.'),
   children: tool.schema
     .array(tool.schema.record(tool.schema.string(), tool.schema.unknown()))
     .optional()
@@ -104,6 +108,7 @@ type CreateArgs = {
   priority?: 'low' | 'medium' | 'high' | null;
   description?: string | null;
   tags?: string[] | null;
+  parent_id?: number | null;
   children?: Record<string, unknown>[];
   original_prompt: string;
 };

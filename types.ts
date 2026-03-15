@@ -46,7 +46,12 @@ export type CreateTodoInput = z.infer<typeof CreateTodoInputSchema>;
 export const CreateTodoDraftSchema = z.lazy(() =>
   z.object({
     todo: z.string().min(1).describe('Short title or one-line description of the todo'),
-    parent_id: z.number().nullable().describe('ID of the parent todo. NULL for top-level. Call list_todos first to resolve a name to an ID.'),
+    parent_id: z
+      .number()
+      .nullable()
+      .describe(
+        'ID of the parent todo. NULL for top-level. Call list_todos first to resolve a name to an ID.',
+      ),
     priority: TodoPrioritySchema.nullable().describe('Optional priority: low, medium, or high'),
     description: z.string().nullable().describe('Optional longer notes'),
     tags: z.array(z.string()).nullable().describe('Optional tags e.g. ["work", "personal"]'),
