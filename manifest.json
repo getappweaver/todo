@@ -1,7 +1,0 @@
-{
-  "manifestVersion": "1.0.0",
-  "name": "todo",
-  "version": "1.0.0",
-  "coreApiVersion": "^5.1.0",
-  "description": "Todo management plugin for dm-bot"
-}
