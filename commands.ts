@@ -17,7 +17,11 @@ import {
   updateTodo,
 } from './db';
 import { deleteDraft, getDraft, listDrafts, storeDraft } from './drafts';
-import { formatCreateDraftTree, formatDraftReply, hasDraftChildren } from './format';
+import {
+  formatCreateDraftTree,
+  formatDraftReply,
+  hasDraftChildren,
+} from './format';
 import { formatTodoDetail, formatTodoTree } from './format';
 import { buildSystemPrompt, parseTodoToolCalls } from './tool';
 import type { CreateTodoDraft, Todo, UpdateTodoInput } from './types';
@@ -39,7 +43,10 @@ function formatVal(v: string | number | string[] | null | undefined): string {
   return String(v);
 }
 
-function formatUpdateChanges(current: Todo | null, input: UpdateTodoInput): string[] {
+function formatUpdateChanges(
+  current: Todo | null,
+  input: UpdateTodoInput,
+): string[] {
   const parts: string[] = [];
   const old = (key: keyof Todo) => (current ? current[key] : undefined);
 
@@ -57,14 +64,19 @@ function formatUpdateChanges(current: Todo | null, input: UpdateTodoInput): stri
   }
 
   if (input.description !== undefined) {
-    const newVal = input.description === null ? '(clear)' : `"${input.description}"`;
+    const newVal =
+      input.description === null ? '(clear)' : `"${input.description}"`;
+
     parts.push(`description: ${formatVal(old('description'))} -> ${newVal}`);
   }
 
   if (input.tags !== undefined) {
     const oldTags = current?.tags ?? null;
     const oldStr = oldTags?.length ? `[${oldTags.join(', ')}]` : '(none)';
-    const newStr = input.tags === null ? '(clear)' : `[${input.tags.join(', ')}]`;
+
+    const newStr =
+      input.tags === null ? '(clear)' : `[${input.tags.join(', ')}]`;
+
     parts.push(`tags: ${oldStr} -> ${newStr}`);
   }
 
@@ -72,7 +84,10 @@ function formatUpdateChanges(current: Todo | null, input: UpdateTodoInput): stri
 }
 
 /** All target fields for the update block: show current value, or "old -> new" when that field is in the update. */
-function formatUpdateBlockLines(current: Todo | null, input: UpdateTodoInput): string[] {
+function formatUpdateBlockLines(
+  current: Todo | null,
+  input: UpdateTodoInput,
+): string[] {
   const old = (key: keyof Todo) => (current ? current[key] : undefined);
   const lines: string[] = [];
 
@@ -112,7 +127,11 @@ function formatUpdateBlockLines(current: Todo | null, input: UpdateTodoInput): s
   return lines;
 }
 
-function formatDraftPreview(id: number, input: CreateTodoDraft, cmd: string): string {
+function formatDraftPreview(
+  id: number,
+  input: CreateTodoDraft,
+  cmd: string,
+): string {
   const title = hasDraftChildren(input)
     ? "I'm going to create the following todo tree:"
     : "I'm going to create the following todo item:";
@@ -133,7 +152,9 @@ function formatDraftRow(
   id: number,
   entry: {
     kind: string;
-    input: { todo?: string; id?: number; priority?: string | null } | UpdateTodoInput;
+    input:
+      | { todo?: string; id?: number; priority?: string | null }
+      | UpdateTodoInput;
   },
   db: Database,
 ): string {
@@ -159,7 +180,9 @@ function formatDraftBlock(
   draft: {
     id: number;
     kind: string;
-    input: CreateTodoDraft | { id: number; todo?: string; [k: string]: unknown };
+    input:
+      | CreateTodoDraft
+      | { id: number; todo?: string; [k: string]: unknown };
     originalPrompt: string;
   },
   cmd: string,
@@ -258,7 +281,13 @@ export async function handleTodo({
 
     const todo = createTodo(
       db,
-      { todo: text, parent_id: parentId, priority: null, description: null, tags: null },
+      {
+        todo: text,
+        parent_id: parentId,
+        priority: null,
+        description: null,
+        tags: null,
+      },
       'dm',
     );
 
@@ -274,7 +303,9 @@ export async function handleTodo({
     let todos = listTodos(db);
 
     if (!filterArg || filterArg === 'pending') {
-      todos = todos.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
+      todos = todos.filter(
+        (t) => t.status !== 'done' && t.status !== 'cancelled',
+      );
     } else if (filterArg !== 'all') {
       todos = todos.filter((t) => t.status === filterArg);
     }
@@ -528,7 +559,8 @@ export async function handleTodo({
         const fieldLines = Object.entries(u)
           .filter(([k, v]) => k !== 'id' && v !== undefined)
           .map(([k, v]) => {
-            const val = v === null ? '—' : Array.isArray(v) ? v.join(', ') : String(v);
+            const val =
+              v === null ? '—' : Array.isArray(v) ? v.join(', ') : String(v);
 
             const oldVal =
               existing && (k === 'status' || k === 'priority' || k === 'todo')
@@ -570,7 +602,13 @@ export async function handleTodo({
     const header = `You can accept all below by ${cmd} accept all`;
     const blocks = drafts.map((d) => formatDraftBlock(d, cmd, db));
 
-    return [`Pending drafts (${drafts.length}):`, ``, header, ``, blocks.join('\n\n')].join('\n');
+    return [
+      `Pending drafts (${drafts.length}):`,
+      ``,
+      header,
+      ``,
+      blocks.join('\n\n'),
+    ].join('\n');
   }
 
   // --- parse draft id for accept/revise/decline ---
@@ -617,7 +655,9 @@ export async function handleTodo({
             const updated = updateTodo(db, draft.input);
 
             if (!updated) {
-              errors.push(`Draft #${draft.id}: todo #${draft.input.id} not found — skipped`);
+              errors.push(
+                `Draft #${draft.id}: todo #${draft.input.id} not found — skipped`,
+              );
             } else {
               results.push(`#${updated.id} updated`);
             }
@@ -629,7 +669,9 @@ export async function handleTodo({
             deleteDraft(db, draft.id);
 
             if (!deleteTodo(db, draft.input.id)) {
-              errors.push(`Draft #${draft.id}: todo #${draft.input.id} not found — skipped`);
+              errors.push(
+                `Draft #${draft.id}: todo #${draft.input.id} not found — skipped`,
+              );
             } else {
               results.push(`#${draft.input.id} deleted`);
             }
@@ -646,7 +688,11 @@ export async function handleTodo({
       }
 
       if (errors.length > 0) {
-        lines.push('', `Skipped ${errors.length}:`, ...errors.map((e) => `  ✗ ${e}`));
+        lines.push(
+          '',
+          `Skipped ${errors.length}:`,
+          ...errors.map((e) => `  ✗ ${e}`),
+        );
       }
 
       return lines.join('\n');
@@ -728,10 +774,15 @@ export async function handleTodo({
     }
 
     const allTodos = listTodos(db);
-    const activeTodos = allTodos.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
+
+    const activeTodos = allTodos.filter(
+      (t) => t.status !== 'done' && t.status !== 'cancelled',
+    );
 
     const activeTree =
-      activeTodos.length > 0 ? formatTodoTree(activeTodos, false) : '(no active todos)';
+      activeTodos.length > 0
+        ? formatTodoTree(activeTodos, false)
+        : '(no active todos)';
 
     const revisedPrompt = `Revise the following todo: "${entry.input.todo}". Correction: "${corrections}".`;
     const systemPrompt = buildSystemPrompt(revisedPrompt, activeTree);

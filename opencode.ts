@@ -34,13 +34,25 @@ const listArgs = {
     .enum(['pending', 'done', 'all'])
     .optional()
     .describe('Filter by status. Default: pending (active only)'),
-  desc: tool.schema.boolean().optional().describe('If true, include descriptions in the output'),
+  desc: tool.schema
+    .boolean()
+    .optional()
+    .describe('If true, include descriptions in the output'),
 };
 
 const createArgs = {
-  todo: tool.schema.string().min(1).describe('Short title or one-line description of the todo'),
-  priority: tool.schema.enum(['low', 'medium', 'high']).nullable().describe('Optional priority'),
-  description: tool.schema.string().nullable().describe('Optional longer notes'),
+  todo: tool.schema
+    .string()
+    .min(1)
+    .describe('Short title or one-line description of the todo'),
+  priority: tool.schema
+    .enum(['low', 'medium', 'high'])
+    .nullable()
+    .describe('Optional priority'),
+  description: tool.schema
+    .string()
+    .nullable()
+    .describe('Optional longer notes'),
   tags: tool.schema
     .array(tool.schema.string())
     .nullable()
@@ -62,7 +74,9 @@ const createArgs = {
       'Nested child todos for creating a NEW tree in one shot. ' +
         'Only use when parent_id is NULL. Never combine with parent_id.',
     ),
-  original_prompt: tool.schema.string().describe('The original natural language request, verbatim'),
+  original_prompt: tool.schema
+    .string()
+    .describe('The original natural language request, verbatim'),
 };
 
 const updateArgs = {
@@ -77,14 +91,30 @@ const updateArgs = {
     .nullable()
     .optional()
     .describe('New priority'),
-  description: tool.schema.string().nullable().optional().describe('New description'),
-  tags: tool.schema.array(tool.schema.string()).nullable().optional().describe('New tags'),
-  original_prompt: tool.schema.string().describe('The original natural language request, verbatim'),
+  description: tool.schema
+    .string()
+    .nullable()
+    .optional()
+    .describe('New description'),
+  tags: tool.schema
+    .array(tool.schema.string())
+    .nullable()
+    .optional()
+    .describe('New tags'),
+  original_prompt: tool.schema
+    .string()
+    .describe('The original natural language request, verbatim'),
 };
 
 const deleteArgs = {
-  id: tool.schema.number().int().positive().describe('ID of the todo to delete'),
-  original_prompt: tool.schema.string().describe('The original natural language request, verbatim'),
+  id: tool.schema
+    .number()
+    .int()
+    .positive()
+    .describe('ID of the todo to delete'),
+  original_prompt: tool.schema
+    .string()
+    .describe('The original natural language request, verbatim'),
 };
 
 // ---------------------------------------------------------------------------
@@ -134,6 +164,7 @@ When the user asks to create, update, delete, or list todos:
 - Always show the full tool output to the user exactly as returned, including Draft ID and reply instructions
 - Always call ${alias}__list first to resolve todo names to IDs before updating or deleting
 - Never guess or assume a todo ID
+- Reminder-style requests ("remind me …", "in 10 minutes", "tomorrow at 9am") are usually scheduled execution, not todo tracking: if a scheduling/reminder plugin is installed, use its tools to create a one-time scheduled reminder; otherwise ask a clarifying question (e.g. "Do you want this as a scheduled reminder (job) or as a tracked todo?")
 - The draft/confirm flow is intentional: every mutating operation (create, update, delete) returns a draft that the user must explicitly accept, revise, or decline via the bot command shown in the output
 - Never retry a create/update/delete if it returns a Draft ID — the draft was created successfully, just show it to the user
 - Never create multiple drafts for the same request`;
@@ -168,7 +199,9 @@ export function createToolDefinitions(alias: string) {
         let todos = listTodos(db);
 
         if (filter === 'pending') {
-          todos = todos.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
+          todos = todos.filter(
+            (t) => t.status !== 'done' && t.status !== 'cancelled',
+          );
         } else if (filter === 'done') {
           todos = todos.filter((t) => t.status === 'done');
         }
@@ -243,10 +276,20 @@ export function createToolDefinitions(alias: string) {
           originalPrompt: original_prompt,
         });
 
-        const fields = ['todo', 'status', 'priority', 'description', 'tags'] as const;
+        const fields = [
+          'todo',
+          'status',
+          'priority',
+          'description',
+          'tags',
+        ] as const;
 
         const fmt = (v: unknown) =>
-          v === null || v === undefined ? '—' : Array.isArray(v) ? v.join(', ') : String(v);
+          v === null || v === undefined
+            ? '—'
+            : Array.isArray(v)
+              ? v.join(', ')
+              : String(v);
 
         const lines = fields.map((key) => {
           const current = existing[key];

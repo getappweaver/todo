@@ -7,6 +7,8 @@
 // ---------------------------------------------------------------------------
 import type { Database } from 'bun:sqlite';
 
+import { assertUnreachable } from '@src/utils';
+
 import type { CreateTodoDraft, UpdateTodoInput } from './types';
 
 // ---------------------------------------------------------------------------
@@ -31,7 +33,10 @@ export type DeleteDraftEntry = {
   originalPrompt: string;
 };
 
-export type TodoDraftEntry = CreateDraftEntry | UpdateDraftEntry | DeleteDraftEntry;
+export type TodoDraftEntry =
+  | CreateDraftEntry
+  | UpdateDraftEntry
+  | DeleteDraftEntry;
 
 export type TodoDraftRow = TodoDraftEntry & { id: number };
 
@@ -80,10 +85,9 @@ export function getDraft(db: Database, id: number): TodoDraftRow | null {
 }
 
 export function listDrafts(db: Database): TodoDraftRow[] {
-  const rows = db.prepare('SELECT * FROM todo_drafts ORDER BY id ASC').all() as Record<
-    string,
-    unknown
-  >[];
+  const rows = db
+    .prepare('SELECT * FROM todo_drafts ORDER BY id ASC')
+    .all() as Record<string, unknown>[];
 
   return rows.map(rowToDraft);
 }
@@ -114,14 +118,13 @@ function rowToDraft(row: Record<string, unknown>): TodoDraftRow {
   const originalPrompt = String(row.original_prompt);
   const id = Number(row.id);
 
-  switch (kind) {
-    case 'create':
-      return { id, kind, input: input as CreateTodoDraft, originalPrompt };
-    case 'update':
-      return { id, kind, input: input as UpdateTodoInput, originalPrompt };
-    case 'delete':
-      return { id, kind, input: input as { id: number }, originalPrompt };
-    default:
-      throw new Error(`Unknown draft kind: ${kind}`);
+  if (kind === 'create') {
+    return { id, kind, input: input as CreateTodoDraft, originalPrompt };
+  } else if (kind === 'update') {
+    return { id, kind, input: input as UpdateTodoInput, originalPrompt };
+  } else if (kind === 'delete') {
+    return { id, kind, input: input as { id: number }, originalPrompt };
+  } else {
+    return assertUnreachable(kind);
   }
 }

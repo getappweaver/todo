@@ -3,7 +3,13 @@
 // ---------------------------------------------------------------------------
 import type { Database } from 'bun:sqlite';
 
-import type { Todo, CreateTodoDraft, CreateTodoInput, UpdateTodoInput, TodoStatus } from './types';
+import type {
+  Todo,
+  CreateTodoDraft,
+  CreateTodoInput,
+  UpdateTodoInput,
+  TodoStatus,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -15,7 +21,8 @@ function rowToTodo(row: Record<string, unknown>): Todo {
     parent_id: row.parent_id != null ? Number(row.parent_id) : null,
     todo: String(row.todo),
     status: String(row.status) as TodoStatus,
-    priority: row.priority != null ? (String(row.priority) as Todo['priority']) : null,
+    priority:
+      row.priority != null ? (String(row.priority) as Todo['priority']) : null,
     sort_order: row.sort_order != null ? Number(row.sort_order) : null,
     description: row.description != null ? String(row.description) : null,
     tags: row.tags != null ? (JSON.parse(String(row.tags)) as string[]) : null,
@@ -48,14 +55,21 @@ export function createTodoTable(db: Database): void {
   `);
 
   db.run('CREATE INDEX IF NOT EXISTS idx_todos_parent_id ON todos(parent_id)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_todos_parent_sort ON todos(parent_id, sort_order)');
+
+  db.run(
+    'CREATE INDEX IF NOT EXISTS idx_todos_parent_sort ON todos(parent_id, sort_order)',
+  );
 }
 
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
-export function createTodo(db: Database, input: CreateTodoInput, source?: string): Todo {
+export function createTodo(
+  db: Database,
+  input: CreateTodoInput,
+  source?: string,
+): Todo {
   const now = Date.now();
 
   const info = db.run(
@@ -137,7 +151,9 @@ export function listTodos(db: Database): Todo[] {
 
 export function listTopLevelTodos(db: Database): Todo[] {
   const rows = db
-    .prepare(`SELECT * FROM todos WHERE parent_id IS NULL ORDER BY sort_order, created_at`)
+    .prepare(
+      `SELECT * FROM todos WHERE parent_id IS NULL ORDER BY sort_order, created_at`,
+    )
     .all() as Record<string, unknown>[];
 
   return rows.map(rowToTodo);
@@ -145,7 +161,9 @@ export function listTopLevelTodos(db: Database): Todo[] {
 
 export function listChildTodos(db: Database, parentId: number): Todo[] {
   const rows = db
-    .prepare(`SELECT * FROM todos WHERE parent_id = ? ORDER BY sort_order, created_at`)
+    .prepare(
+      `SELECT * FROM todos WHERE parent_id = ? ORDER BY sort_order, created_at`,
+    )
     .all(parentId) as Record<string, unknown>[];
 
   return rows.map(rowToTodo);
@@ -161,7 +179,9 @@ export function updateTodo(db: Database, input: UpdateTodoInput): Todo | null {
   const now = Date.now();
 
   const completedAt =
-    input.status === 'done' && existing.status !== 'done' ? now : existing.completed_at;
+    input.status === 'done' && existing.status !== 'done'
+      ? now
+      : existing.completed_at;
 
   db.run(
     `UPDATE todos SET
@@ -177,7 +197,9 @@ export function updateTodo(db: Database, input: UpdateTodoInput): Todo | null {
       input.todo ?? existing.todo,
       input.status ?? existing.status,
       input.priority !== undefined ? input.priority : existing.priority,
-      input.description !== undefined ? input.description : existing.description,
+      input.description !== undefined
+        ? input.description
+        : existing.description,
       input.tags !== undefined
         ? input.tags
           ? JSON.stringify(input.tags)
@@ -216,11 +238,10 @@ export function doneTodo(db: Database, id: number, cascade = true): boolean {
       [id, now, now],
     );
   } else {
-    db.run(`UPDATE todos SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?`, [
-      now,
-      now,
-      id,
-    ]);
+    db.run(
+      `UPDATE todos SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?`,
+      [now, now, id],
+    );
   }
 
   return true;

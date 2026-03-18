@@ -163,7 +163,10 @@ function formatUpdatePreview(
 ): string {
   const { input } = call;
   const existing = getTodo(db, input.id);
-  const titleLine = existing ? `Todo #${input.id}: "${existing.todo}"` : `Todo #${input.id}`;
+
+  const titleLine = existing
+    ? `Todo #${input.id}: "${existing.todo}"`
+    : `Todo #${input.id}`;
 
   const formatVal = (v: string | string[] | null | undefined): string => {
     if (v === undefined || v === null) {
@@ -174,7 +177,10 @@ function formatUpdatePreview(
   };
 
   const lines = UPDATE_PREVIEW_FIELDS.map(({ key, label }) => {
-    const current = existing ? (existing as Record<string, unknown>)[key] : undefined;
+    const current = existing
+      ? (existing as Record<string, unknown>)[key]
+      : undefined;
+
     const next = (input as Record<string, unknown>)[key];
     const hasChange = key in input && next !== undefined;
 
@@ -238,10 +244,15 @@ export async function handleTodoAi({
   }
 
   const allTodos = listTodos(db);
-  const activeTodos = allTodos.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
+
+  const activeTodos = allTodos.filter(
+    (t) => t.status !== 'done' && t.status !== 'cancelled',
+  );
 
   const activeTree =
-    activeTodos.length > 0 ? formatTodoTree(activeTodos, false) : '(no active todos yet)';
+    activeTodos.length > 0
+      ? formatTodoTree(activeTodos, false)
+      : '(no active todos yet)';
 
   const systemPrompt = buildSystemPrompt(userPrompt, activeTree);
   const raw = (await runAgent(systemPrompt)).trim();
@@ -253,14 +264,17 @@ export async function handleTodoAi({
   const results = parseTodoToolCalls(raw);
 
   const fulfilled = results.filter(
-    (r): r is { status: 'fulfilled'; value: TodoToolCall } => r.status === 'fulfilled',
+    (r): r is { status: 'fulfilled'; value: TodoToolCall } =>
+      r.status === 'fulfilled',
   );
 
   if (fulfilled.length === 0) {
     const firstRejected = results.find((r) => r.status === 'rejected');
 
     const msg =
-      firstRejected?.status === 'rejected' ? firstRejected.reason.message : 'No valid JSON';
+      firstRejected?.status === 'rejected'
+        ? firstRejected.reason.message
+        : 'No valid JSON';
 
     return `Failed to parse model response: ${msg}`;
   }
@@ -272,7 +286,9 @@ export async function handleTodoAi({
     const todos = listTodos(db);
     const pending = todos.filter((t) => t.status === 'pending');
 
-    return pending.length === 0 ? 'No active todos.' : formatTodoTree(pending, false);
+    return pending.length === 0
+      ? 'No active todos.'
+      : formatTodoTree(pending, false);
   }
 
   // create / update / delete: store drafts and return previews

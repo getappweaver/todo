@@ -39,7 +39,10 @@ const TodoToolCallSchema = z.discriminatedUnion('type', [
 
 export type TodoToolCall = z.infer<typeof TodoToolCallSchema>;
 
-export function buildSystemPrompt(userPrompt: string, activeTree: string): string {
+export function buildSystemPrompt(
+  userPrompt: string,
+  activeTree: string,
+): string {
   const schema = z.toJSONSchema(TodoToolCallSchema);
 
   return `You are managing a todo list for the user.
@@ -62,6 +65,8 @@ Output one or more JSON objects matching this JSON Schema. Use a single object f
 ${JSON.stringify(schema, null, 2)}`;
 }
 
-export function parseTodoToolCalls(raw: string): ParseSettledResult<TodoToolCall>[] {
+export function parseTodoToolCalls(
+  raw: string,
+): ParseSettledResult<TodoToolCall>[] {
   return parseToolCalls({ raw, schema: TodoToolCallSchema });
 }

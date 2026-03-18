@@ -52,7 +52,9 @@ export function formatDraftReply(
   const first = blockPrefix + REPLY_LABEL;
 
   if (kind === 'delete') {
-    return [first + `${cmd} accept ${id}`, pad + `${cmd} decline ${id}`].join('\n');
+    return [first + `${cmd} accept ${id}`, pad + `${cmd} decline ${id}`].join(
+      '\n',
+    );
   }
 
   return [
@@ -89,7 +91,10 @@ function buildChildMap(todos: Todo[]): Map<number | null, Todo[]> {
   return map;
 }
 
-export function formatTodoTree(todos: Todo[], showDescriptions: boolean): string {
+export function formatTodoTree(
+  todos: Todo[],
+  showDescriptions: boolean,
+): string {
   if (todos.length === 0) {
     return 'No todos.';
   }

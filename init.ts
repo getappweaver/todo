@@ -6,7 +6,11 @@ import { basename, join } from 'path';
 
 import { Database } from 'bun:sqlite';
 
-import { parsePluginPackageJson, type BotPlugin, type PluginContext } from '@src/core/plugin';
+import {
+  parsePluginPackageJson,
+  type BotPlugin,
+  type PluginContext,
+} from '@src/core/plugin';
 
 import { handleTodo } from './commands';
 import { createTodoTable } from './db';
@@ -44,8 +48,10 @@ export const TodoPlugin: BotPlugin = {
 
     const runAgent =
       TodoPluginContext.runAgent != null
-        ? (prompt: string) => TodoPluginContext!.runAgent!(prompt).then((r) => r.output)
-        : () => Promise.reject(new Error('runAgent not available in this context'));
+        ? (prompt: string) =>
+            TodoPluginContext!.runAgent!(prompt).then((r) => r.output)
+        : () =>
+            Promise.reject(new Error('runAgent not available in this context'));
 
     return handleTodo({
       args,
