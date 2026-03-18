@@ -27,7 +27,7 @@ function draftTreeLines(node: CreateTodoDraft, prefix: string): string[] {
 
   const children = node.children ?? [];
 
-  children.forEach((child) => {
+  children.forEach((child: CreateTodoDraft) => {
     lines.push(...draftTreeLines(child, prefix + '  '));
   });
 

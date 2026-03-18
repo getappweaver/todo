@@ -9,10 +9,12 @@
 // ---------------------------------------------------------------------------
 
 import { join } from 'path';
-import { Database } from 'bun:sqlite';
+
 import { tool } from '@opencode-ai/plugin';
+import { Database } from 'bun:sqlite';
 
 import { dmBotRoot } from '../../src/paths';
+
 import { createTodoTable, getTodo, listTodos } from './db';
 import { createTodoDraftsTable, storeDraft } from './drafts';
 import {
@@ -32,25 +34,13 @@ const listArgs = {
     .enum(['pending', 'done', 'all'])
     .optional()
     .describe('Filter by status. Default: pending (active only)'),
-  desc: tool.schema
-    .boolean()
-    .optional()
-    .describe('If true, include descriptions in the output'),
+  desc: tool.schema.boolean().optional().describe('If true, include descriptions in the output'),
 };
 
 const createArgs = {
-  todo: tool.schema
-    .string()
-    .min(1)
-    .describe('Short title or one-line description of the todo'),
-  priority: tool.schema
-    .enum(['low', 'medium', 'high'])
-    .nullable()
-    .describe('Optional priority'),
-  description: tool.schema
-    .string()
-    .nullable()
-    .describe('Optional longer notes'),
+  todo: tool.schema.string().min(1).describe('Short title or one-line description of the todo'),
+  priority: tool.schema.enum(['low', 'medium', 'high']).nullable().describe('Optional priority'),
+  description: tool.schema.string().nullable().describe('Optional longer notes'),
   tags: tool.schema
     .array(tool.schema.string())
     .nullable()
@@ -61,19 +51,18 @@ const createArgs = {
     .optional()
     .describe(
       'ID of an EXISTING parent todo to nest under. ' +
-      'OMIT this field entirely for top-level todos — do not pass null or "null". ' +
-      'Call list first to get the ID. ' +
-      'Do NOT use children if setting parent_id.'
+        'OMIT this field entirely for top-level todos — do not pass null or "null". ' +
+        'Call list first to get the ID. ' +
+        'Do NOT use children if setting parent_id.',
     ),
   children: tool.schema
     .array(tool.schema.record(tool.schema.string(), tool.schema.unknown()))
     .optional()
     .describe(
       'Nested child todos for creating a NEW tree in one shot. ' +
-      'Only use when parent_id is NULL. Never combine with parent_id.'),
-  original_prompt: tool.schema
-    .string()
-    .describe('The original natural language request, verbatim'),
+        'Only use when parent_id is NULL. Never combine with parent_id.',
+    ),
+  original_prompt: tool.schema.string().describe('The original natural language request, verbatim'),
 };
 
 const updateArgs = {
@@ -90,16 +79,12 @@ const updateArgs = {
     .describe('New priority'),
   description: tool.schema.string().nullable().optional().describe('New description'),
   tags: tool.schema.array(tool.schema.string()).nullable().optional().describe('New tags'),
-  original_prompt: tool.schema
-    .string()
-    .describe('The original natural language request, verbatim'),
+  original_prompt: tool.schema.string().describe('The original natural language request, verbatim'),
 };
 
 const deleteArgs = {
   id: tool.schema.number().int().positive().describe('ID of the todo to delete'),
-  original_prompt: tool.schema
-    .string()
-    .describe('The original natural language request, verbatim'),
+  original_prompt: tool.schema.string().describe('The original natural language request, verbatim'),
 };
 
 // ---------------------------------------------------------------------------
@@ -167,6 +152,7 @@ export function createToolDefinitions(alias: string) {
     db.run('PRAGMA foreign_keys = ON');
     createTodoTable(db);
     createTodoDraftsTable(db);
+
     return db;
   }
 
@@ -187,7 +173,10 @@ export function createToolDefinitions(alias: string) {
           todos = todos.filter((t) => t.status === 'done');
         }
 
-        if (todos.length === 0) return 'No todos.';
+        if (todos.length === 0) {
+          return 'No todos.';
+        }
+
         return formatTodoTree(todos, args.desc ?? false);
       },
     },
@@ -201,7 +190,10 @@ export function createToolDefinitions(alias: string) {
         const db = openDb();
 
         const parsed = CreateTodoDraftSchema.safeParse(args);
-        if (!parsed.success) return `Validation error: ${parsed.error.message}`;
+
+        if (!parsed.success) {
+          return `Validation error: ${parsed.error.message}`;
+        }
 
         const draftId = storeDraft(db, {
           kind: 'create',
@@ -234,9 +226,13 @@ export function createToolDefinitions(alias: string) {
 
         const { original_prompt, ...updateInput } = args;
         const parsed = UpdateTodoInputSchema.safeParse(updateInput);
-        if (!parsed.success) return `Validation error: ${parsed.error.message}`;
+
+        if (!parsed.success) {
+          return `Validation error: ${parsed.error.message}`;
+        }
 
         const existing = getTodo(db, parsed.data.id);
+
         if (!existing) {
           return `Todo not found: ${parsed.data.id}. Call the list tool to see current IDs.`;
         }
@@ -248,12 +244,15 @@ export function createToolDefinitions(alias: string) {
         });
 
         const fields = ['todo', 'status', 'priority', 'description', 'tags'] as const;
+
         const fmt = (v: unknown) =>
           v === null || v === undefined ? '—' : Array.isArray(v) ? v.join(', ') : String(v);
+
         const lines = fields.map((key) => {
           const current = existing[key];
           const next = (parsed.data as Record<string, unknown>)[key];
           const hasChange = key in parsed.data && next !== undefined;
+
           return `  ${key.padEnd(12)}: ${hasChange ? `${fmt(current)} → ${fmt(next)}` : fmt(current)}`;
         });
 
@@ -277,6 +276,7 @@ export function createToolDefinitions(alias: string) {
         const db = openDb();
 
         const todo = getTodo(db, args.id);
+
         if (!todo) {
           return `Todo not found: ${args.id}. Call the list tool to see current IDs.`;
         }

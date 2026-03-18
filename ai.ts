@@ -6,16 +6,15 @@ import type { Database } from 'bun:sqlite';
 import { z } from 'zod';
 
 import type { PluginIdentity } from '@src/core/plugin';
-import { parseToolCalls } from '@src/tools/utils';
 import type { ParseSettledResult } from '@src/tools/utils';
-
-import { formatDraftReply } from './format';
-import type { CreateTodoDraft } from './types';
-import { CreateTodoDraftSchema, UpdateTodoInputSchema } from './types';
+import { parseToolCalls } from '@src/tools/utils';
 
 import { getTodo, listTodos } from './db';
 import { storeDraft } from './drafts';
+import { formatDraftReply } from './format';
 import { formatTodoTree } from './format';
+import type { CreateTodoDraft } from './types';
+import { CreateTodoDraftSchema, UpdateTodoInputSchema } from './types';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -112,7 +111,7 @@ function formatDraftTreeLines(node: CreateTodoDraft, prefix: string): string[] {
 
   const children = node.children ?? [];
 
-  children.forEach((child) => {
+  children.forEach((child: CreateTodoDraft) => {
     lines.push(...formatDraftTreeLines(child, prefix + '  '));
   });
 

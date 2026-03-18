@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// plugins/todos/db.ts — CRUD operations for the todos table
+// plugins/todo/db.ts — CRUD operations for the todos table
 // ---------------------------------------------------------------------------
 import type { Database } from 'bun:sqlite';
 
@@ -27,7 +27,7 @@ function rowToTodo(row: Record<string, unknown>): Todo {
 }
 
 // ---------------------------------------------------------------------------
-// Schema migration — call from initTodosPlugin() in src/plugins/todos/init.ts
+// Schema migration — called from TodoPlugin.onInit (plugins/todo/init.ts)
 // ---------------------------------------------------------------------------
 export function createTodoTable(db: Database): void {
   db.run(`
@@ -100,7 +100,7 @@ export function createTodosFromDraftTree(
 
     const children = node.children ?? [];
 
-    children.forEach((child) => walk(child, todo.id));
+    children.forEach((child: CreateTodoDraft) => walk(child, todo.id));
   }
 
   walk(draft, null);

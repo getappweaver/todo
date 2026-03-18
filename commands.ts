@@ -1,12 +1,10 @@
 // ---------------------------------------------------------------------------
-// src/plugins/todos/commands.ts — !todo sub-command handler
+// plugins/todo/commands.ts — !todo sub-command handler
 // ---------------------------------------------------------------------------
 
 import type { Database } from 'bun:sqlite';
 
 import type { PluginIdentity } from '@src/core/plugin';
-import { formatCreateDraftTree, formatDraftReply, hasDraftChildren } from './format';
-import type { CreateTodoDraft, Todo, UpdateTodoInput } from './types';
 
 import { handleTodoAi } from './ai';
 import {
@@ -19,8 +17,10 @@ import {
   updateTodo,
 } from './db';
 import { deleteDraft, getDraft, listDrafts, storeDraft } from './drafts';
+import { formatCreateDraftTree, formatDraftReply, hasDraftChildren } from './format';
 import { formatTodoDetail, formatTodoTree } from './format';
-import { buildSystemPrompt, parseTodoToolCalls } from './tools';
+import { buildSystemPrompt, parseTodoToolCalls } from './tool';
+import type { CreateTodoDraft, Todo, UpdateTodoInput } from './types';
 import { CreateTodoInputSchema, TodoStatusSchema } from './types';
 
 // ---------------------------------------------------------------------------
@@ -28,8 +28,14 @@ import { CreateTodoInputSchema, TodoStatusSchema } from './types';
 // ---------------------------------------------------------------------------
 
 function formatVal(v: string | number | string[] | null | undefined): string {
-  if (v === undefined || v === null) return '(none)';
-  if (Array.isArray(v)) return v.length ? `[${v.join(', ')}]` : '(none)';
+  if (v === undefined || v === null) {
+    return '(none)';
+  }
+
+  if (Array.isArray(v)) {
+    return v.length ? `[${v.join(', ')}]` : '(none)';
+  }
+
   return String(v);
 }
 
@@ -40,23 +46,28 @@ function formatUpdateChanges(current: Todo | null, input: UpdateTodoInput): stri
   if (input.todo !== undefined) {
     parts.push(`todo: ${formatVal(old('todo'))} -> "${input.todo}"`);
   }
+
   if (input.status !== undefined) {
     parts.push(`status: ${formatVal(old('status'))} -> ${input.status}`);
   }
+
   if (input.priority !== undefined) {
     const newVal = input.priority === null ? '(clear)' : input.priority;
     parts.push(`priority: ${formatVal(old('priority'))} -> ${newVal}`);
   }
+
   if (input.description !== undefined) {
     const newVal = input.description === null ? '(clear)' : `"${input.description}"`;
     parts.push(`description: ${formatVal(old('description'))} -> ${newVal}`);
   }
+
   if (input.tags !== undefined) {
     const oldTags = current?.tags ?? null;
     const oldStr = oldTags?.length ? `[${oldTags.join(', ')}]` : '(none)';
     const newStr = input.tags === null ? '(clear)' : `[${input.tags.join(', ')}]`;
     parts.push(`tags: ${oldStr} -> ${newStr}`);
   }
+
   return parts;
 }
 
@@ -70,28 +81,34 @@ function formatUpdateBlockLines(current: Todo | null, input: UpdateTodoInput): s
       ? `todo: ${formatVal(old('todo'))} -> "${input.todo}"`
       : `todo: ${formatVal(old('todo'))}`,
   );
+
   lines.push(
     input.description !== undefined
       ? `description: ${formatVal(old('description'))} -> ${input.description === null ? '(clear)' : `"${input.description}"`}`
       : `description: ${formatVal(old('description'))}`,
   );
+
   lines.push(
     input.status !== undefined
       ? `status: ${formatVal(old('status'))} -> ${input.status}`
       : `status: ${formatVal(old('status'))}`,
   );
+
   lines.push(
     input.priority !== undefined
       ? `priority: ${formatVal(old('priority'))} -> ${input.priority === null ? '(clear)' : input.priority}`
       : `priority: ${formatVal(old('priority'))}`,
   );
+
   const oldTags = current?.tags ?? null;
   const oldStr = oldTags?.length ? `[${oldTags.join(', ')}]` : '(none)';
+
   lines.push(
     input.tags !== undefined
       ? `tags: ${oldStr} -> ${input.tags === null ? '(clear)' : `[${input.tags.join(', ')}]`}`
       : `tags: ${oldStr}`,
   );
+
   return lines;
 }
 
@@ -122,6 +139,7 @@ function formatDraftRow(
 ): string {
   if (entry.kind === 'create') {
     const inp = entry.input as { todo?: string; priority?: string | null };
+
     return `#${id} [create] | ${inp.todo ?? '—'} | tree | ${inp.priority ?? '—'}`;
   }
 
@@ -130,6 +148,7 @@ function formatDraftRow(
     const current = getTodo(db, inp.id);
     const changes = formatUpdateChanges(current, inp);
     const summary = changes.length > 0 ? changes.join(', ') : '—';
+
     return `#${id} [update] | target: #${inp.id} | ${summary}`;
   }
 
@@ -201,9 +220,9 @@ export async function handleTodo({
   const alias = identity.alias;
 
   if (!sub || sub === 'help') {
-    return helpText(alias).concat([
-      `!${alias} help                         — this message`,
-    ]).join('\n');
+    return helpText(alias)
+      .concat([`!${alias} help                         — this message`])
+      .join('\n');
   }
 
   // --- AI ---

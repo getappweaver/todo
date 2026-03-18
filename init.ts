@@ -1,31 +1,67 @@
 // ---------------------------------------------------------------------------
-// plugins/todos/init.ts — TodoPlugin definition
+// plugins/todo/init.ts — TodoPlugin definition
 // ---------------------------------------------------------------------------
-import type { Database } from 'bun:sqlite';
 
-import type { BotPlugin } from '@src/core/plugin';
+import { basename, join } from 'path';
+
+import { Database } from 'bun:sqlite';
+
+import { parsePluginPackageJson, type BotPlugin, type PluginContext } from '@src/core/plugin';
 
 import { handleTodo } from './commands';
 import { createTodoTable } from './db';
 import { createTodoDraftsTable } from './drafts';
 
+const pluginDir = import.meta.dir;
+const alias = basename(pluginDir);
+
+const todoPkg = parsePluginPackageJson({ pluginDir });
+
+if (!todoPkg) {
+  throw new Error(
+    `Todo plugin: invalid or missing package.json. Required: name, version, dmBot.coreApiVersion, dmBot.description`,
+  );
+}
+
+export let TodoPluginContext: PluginContext | null = null;
+export let TodoPluginDb: Database | null = null;
+
 export const TodoPlugin: BotPlugin = {
   identity: {
-    name: 'todos',
-    alias: 'todo',
-    version: '1.0.0',
+    name: todoPkg.name,
+    alias,
+    version: todoPkg.version,
+    description: todoPkg.description,
   },
-  handler: (args, ctx) =>
-    handleTodo({
+  handler: (args: string[]) => {
+    if (!TodoPluginContext) {
+      throw new Error('TodoPlugin not initialized');
+    }
+
+    if (!TodoPluginDb) {
+      throw new Error('TodoPluginDb not initialized');
+    }
+
+    const runAgent =
+      TodoPluginContext.runAgent != null
+        ? (prompt: string) => TodoPluginContext!.runAgent!(prompt).then((r) => r.output)
+        : () => Promise.reject(new Error('runAgent not available in this context'));
+
+    return handleTodo({
       args,
-      db: ctx.pluginDb,
+      db: TodoPluginDb,
       identity: TodoPlugin.identity,
-      runAgent: ctx.runAgent,
+      runAgent,
       helpText: TodoPlugin.helpText,
-    }),
-  onInit: (db: Database) => {
-    createTodoTable(db);
-    createTodoDraftsTable(db);
+    });
+  },
+  onInit: (ctx: PluginContext) => {
+    TodoPluginContext = ctx;
+
+    TodoPluginDb = new Database(join(pluginDir, 'db.sqlite'), { strict: true });
+
+    createTodoTable(TodoPluginDb);
+    createTodoDraftsTable(TodoPluginDb);
   },
   helpText: (alias: string) => [
     `!${alias} ai <prompt>                  — create a todo draft from natural language`,

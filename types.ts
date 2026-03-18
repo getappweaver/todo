@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// plugins/todos/types.ts — Types and Zod schemas for the todos feature
+// plugins/todo/types.ts — Types and Zod schemas for the todos feature
 // ---------------------------------------------------------------------------
 import { z } from 'zod';
 
@@ -27,7 +27,7 @@ export const TodoSchema = z.object({
 
 export type Todo = z.infer<typeof TodoSchema>;
 
-/** Any change in this schema MUST be reflected in the tools in .opencode/tools/todos.ts */
+/** Any change in this schema MUST be reflected in the tool in .opencode/tool/todo.ts */
 export const CreateTodoInputSchema = z.object({
   todo: z.string().min(1).describe('Short title or one-line description of the todo'),
   parent_id: z
@@ -43,7 +43,16 @@ export const CreateTodoInputSchema = z.object({
 
 export type CreateTodoInput = z.infer<typeof CreateTodoInputSchema>;
 
-export const CreateTodoDraftSchema = z.lazy(() =>
+export interface CreateTodoDraft {
+  todo: string;
+  parent_id: number | null;
+  priority: z.infer<typeof TodoPrioritySchema> | null;
+  description: string | null;
+  tags: string[] | null;
+  children?: CreateTodoDraft[];
+}
+
+export const CreateTodoDraftSchema: z.ZodType<CreateTodoDraft> = z.lazy(() =>
   z.object({
     todo: z.string().min(1).describe('Short title or one-line description of the todo'),
     parent_id: z
@@ -59,9 +68,7 @@ export const CreateTodoDraftSchema = z.lazy(() =>
   }),
 );
 
-export type CreateTodoDraft = z.infer<typeof CreateTodoDraftSchema>;
-
-/** Any change in this schema MUST be reflected in the tools in .opencode/tools/todos.ts */
+/** Any change in this schema MUST be reflected in the tool in .opencode/tool/todo.ts */
 export const UpdateTodoInputSchema = z.object({
   id: z.number().describe('ID of the todo to update'),
   todo: z.string().min(1).optional().describe('New title'),

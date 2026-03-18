@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { parseToolCalls } from '@src/tools/utils';
 import type { ParseSettledResult } from '@src/tools/utils';
+import { parseToolCalls } from '@src/tools/utils';
 
 import { CreateTodoInputSchema, UpdateTodoInputSchema } from './types';
 
