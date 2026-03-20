@@ -2,9 +2,9 @@
 // plugins/todo/init.ts — TodoPlugin definition
 // ---------------------------------------------------------------------------
 
-import { basename, join } from 'path';
+import { basename } from 'path';
 
-import { Database } from 'bun:sqlite';
+import type { Database } from 'bun:sqlite';
 
 import {
   parsePluginPackageJson,
@@ -13,8 +13,7 @@ import {
 } from '@src/core/plugin';
 
 import { handleTodo } from './commands';
-import { createTodoTable } from './db';
-import { createTodoDraftsTable } from './drafts';
+import { openDb } from './db';
 
 const pluginDir = import.meta.dir;
 const alias = basename(pluginDir);
@@ -46,28 +45,17 @@ export const TodoPlugin: BotPlugin = {
       throw new Error('TodoPluginDb not initialized');
     }
 
-    const runAgent =
-      TodoPluginContext.runAgent != null
-        ? (prompt: string) =>
-            TodoPluginContext!.runAgent!(prompt).then((r) => r.output)
-        : () =>
-            Promise.reject(new Error('runAgent not available in this context'));
-
     return handleTodo({
       args,
       db: TodoPluginDb,
       identity: TodoPlugin.identity,
-      runAgent,
+      runAgent: TodoPluginContext.runAgent,
       helpText: TodoPlugin.helpText,
     });
   },
   onInit: (ctx: PluginContext) => {
     TodoPluginContext = ctx;
-
-    TodoPluginDb = new Database(join(pluginDir, 'db.sqlite'), { strict: true });
-
-    createTodoTable(TodoPluginDb);
-    createTodoDraftsTable(TodoPluginDb);
+    TodoPluginDb = openDb();
   },
   helpText: (alias: string) => [
     `!${alias} ai <prompt>                  — create a todo draft from natural language`,

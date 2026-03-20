@@ -5,6 +5,8 @@
 import type { Database } from 'bun:sqlite';
 import { z } from 'zod';
 
+import type { AgentRunResult } from '@src/backends/types';
+import { getOutputString } from '@src/backends/types';
 import type { PluginIdentity } from '@src/core/plugin';
 import type { ParseSettledResult } from '@src/tools/utils';
 import { parseToolCalls } from '@src/tools/utils';
@@ -20,16 +22,22 @@ import { CreateTodoDraftSchema, UpdateTodoInputSchema } from './types';
 // Schemas
 // ---------------------------------------------------------------------------
 
-const TodoListCallSchema = z.object({ type: z.literal('list') });
+const TodoListCallSchema = z.object({
+  type: z.literal('list'),
+  filter: z.enum(['pending', 'done', 'all']).optional(),
+  desc: z.boolean().optional(),
+});
 
 const TodoCreateCallSchema = z.object({
   type: z.literal('create'),
   input: CreateTodoDraftSchema,
+  original_prompt: z.string(),
 });
 
 const TodoUpdateCallSchema = z.object({
   type: z.literal('update'),
   input: UpdateTodoInputSchema,
+  original_prompt: z.string(),
 });
 
 const TodoDeleteCallSchema = z.object({
@@ -37,6 +45,7 @@ const TodoDeleteCallSchema = z.object({
   input: z.object({
     id: z.number().int().positive().describe('ID of the todo to delete'),
   }),
+  original_prompt: z.string(),
 });
 
 const TodoToolCallSchema = z.discriminatedUnion('type', [
@@ -46,13 +55,19 @@ const TodoToolCallSchema = z.discriminatedUnion('type', [
   TodoDeleteCallSchema,
 ]);
 
+export { TodoToolCallSchema as ToolCallSchema };
+export const skillDescription = 'Todo management via local dm-bot CLI tools.';
+
 type TodoToolCall = z.infer<typeof TodoToolCallSchema>;
 
 // ---------------------------------------------------------------------------
 // System prompt
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(userPrompt: string, activeTree: string): string {
+export function buildSystemPrompt(
+  userPrompt: string,
+  activeTree: string,
+): string {
   const schema = z.toJSONSchema(TodoToolCallSchema);
 
   return `You are managing a todo list for the user. Your output is used by the system to create draft todo items. The user will then review each draft and can accept it (create real todos), decline it, or ask for revisions. Revise applies to the whole draft (e.g. a whole tree), not a single item.
@@ -67,6 +82,7 @@ Instructions:
 - If the user wants to create new todo(s), output type "create". For "create", you must output a single tree: one root node with optional "children" array. Each child has the same shape (todo, priority?, description?, tags?, children?). Use this recursive structure so parent-child relationships are expressed by nesting, not by IDs. One "create" = one tree = one draft. To add multiple unrelated top-level items, output multiple "create" objects (one JSON object per line), each with its own root and optional children.
 - If the user wants to update an existing todo, output type "update". Resolve the todo by name from the active list to its numeric id and only include the fields being changed (id plus status, todo, priority, etc. as needed).
 - If the user wants to delete a todo, output type "delete".
+- For "create", "update", and "delete": include "original_prompt" at the top level (same level as "type"), set to the user's request verbatim.
 - Important: "update [todo name] status to X" means update the existing todo — use "update" with that todo's id, not "create".
 - For name resolution (update/delete): match by name (case-insensitive, partial match). If ambiguous, pick the closest match.
 
@@ -79,7 +95,9 @@ ${JSON.stringify(schema, null, 2)}`;
 // Parser
 // ---------------------------------------------------------------------------
 
-function parseTodoToolCalls(raw: string): ParseSettledResult<TodoToolCall>[] {
+export function parseTodoToolCalls(
+  raw: string,
+): ParseSettledResult<TodoToolCall>[] {
   return parseToolCalls({ raw, schema: TodoToolCallSchema });
 }
 
@@ -226,7 +244,7 @@ export type HandleTodoAiProps = {
   args: string[];
   db: Database;
   identity: PluginIdentity;
-  runAgent: (prompt: string) => Promise<string>;
+  runAgent: (prompt: string) => Promise<AgentRunResult>;
 };
 
 export async function handleTodoAi({
@@ -255,7 +273,8 @@ export async function handleTodoAi({
       : '(no active todos yet)';
 
   const systemPrompt = buildSystemPrompt(userPrompt, activeTree);
-  const raw = (await runAgent(systemPrompt)).trim();
+  const result = await runAgent(systemPrompt);
+  const raw = getOutputString(result).trim();
 
   if (!raw || raw === '(no output)') {
     return 'Model returned no output. Try again or rephrase your request.';
@@ -284,11 +303,24 @@ export async function handleTodoAi({
   // list: execute immediately
   if (calls.find((c) => c.type === 'list')) {
     const todos = listTodos(db);
-    const pending = todos.filter((t) => t.status === 'pending');
+    const listCall = calls.find((c) => c.type === 'list');
+    const filter = listCall?.filter ?? 'pending';
+    const desc = listCall?.desc ?? false;
 
-    return pending.length === 0
-      ? 'No active todos.'
-      : formatTodoTree(pending, false);
+    const filtered =
+      filter === 'pending'
+        ? todos.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
+        : filter === 'done'
+          ? todos.filter((t) => t.status === 'done')
+          : todos;
+
+    return filtered.length === 0
+      ? filter === 'done'
+        ? 'No done todos.'
+        : filter === 'all'
+          ? 'No todos.'
+          : 'No active todos.'
+      : formatTodoTree(filtered, desc);
   }
 
   // create / update / delete: store drafts and return previews
@@ -301,7 +333,7 @@ export async function handleTodoAi({
       const draftId = storeDraft(db, {
         kind: 'create',
         input: call.input,
-        originalPrompt: userPrompt,
+        originalPrompt: call.original_prompt,
       });
 
       previews.push(formatCreatePreview(draftId, call, cmd));
@@ -309,7 +341,7 @@ export async function handleTodoAi({
       const draftId = storeDraft(db, {
         kind: 'update',
         input: call.input,
-        originalPrompt: userPrompt,
+        originalPrompt: call.original_prompt,
       });
 
       previews.push(formatUpdatePreview(draftId, call, db, cmd));
@@ -317,7 +349,7 @@ export async function handleTodoAi({
       const draftId = storeDraft(db, {
         kind: 'delete',
         input: call.input,
-        originalPrompt: userPrompt,
+        originalPrompt: call.original_prompt,
       });
 
       previews.push(formatDeletePreview(draftId, call, db, cmd));
@@ -332,3 +364,93 @@ export async function handleTodoAi({
 
   return [acceptAllHint, ``, previews.join('\n\n')].join('\n');
 }
+
+export function agentInstructions(alias: string): string {
+  return `## Todo (${alias} tools)
+
+When creating todos:
+- One \`create\` call creates exactly one draft (which may contain a full todo tree).
+- For parent/child todos, put the entire tree in \`input.children\` inside the same \`create\` call.
+- Do NOT create the parent first and then create children separately using \`parent_id\`.
+- Each node uses the same shape inside \`children\`:
+  { todo, parent_id: null, priority, description, tags, children? }
+
+After the CLI returns, apply the draft using the reply instructions included in the output:
+- \`!${alias} accept <draft_id>\`
+- \`!${alias} revise <draft_id> <corrections>\`
+- \`!${alias} decline <draft_id>\`
+
+Output policy:
+- For mutating calls (\`create\`, \`update\`, \`delete\`), return the CLI output to the user verbatim.
+- Do NOT summarize, shorten, or replace it with only "Created draft #...".
+- The user must see the full draft preview text and reply commands exactly as returned.
+`;
+}
+
+export async function executeTool({
+  alias,
+  call,
+  db,
+}: {
+  alias: string;
+  call: TodoToolCall;
+  db: Database;
+}): Promise<string> {
+  const cmd = `!${alias}`;
+
+  switch (call.type) {
+    case 'list': {
+      const todos = listTodos(db);
+      const filter = call.filter ?? 'pending';
+      const desc = call.desc ?? false;
+
+      const filtered =
+        filter === 'pending'
+          ? todos.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
+          : filter === 'done'
+            ? todos.filter((t) => t.status === 'done')
+            : todos;
+
+      return filtered.length === 0
+        ? filter === 'done'
+          ? 'No done todos.'
+          : filter === 'all'
+            ? 'No todos.'
+            : 'No active todos.'
+        : formatTodoTree(filtered, desc);
+    }
+
+    case 'create': {
+      const draftId = storeDraft(db, {
+        kind: 'create',
+        input: call.input,
+        originalPrompt: call.original_prompt,
+      });
+
+      return formatCreatePreview(draftId, call, cmd);
+    }
+
+    case 'update': {
+      const draftId = storeDraft(db, {
+        kind: 'update',
+        input: call.input,
+        originalPrompt: call.original_prompt,
+      });
+
+      return formatUpdatePreview(draftId, call, db, cmd);
+    }
+
+    case 'delete': {
+      const draftId = storeDraft(db, {
+        kind: 'delete',
+        input: call.input,
+        originalPrompt: call.original_prompt,
+      });
+
+      return formatDeletePreview(draftId, call, db, cmd);
+    }
+  }
+}
+
+// Re-export so CLI can open the plugin DB without importing init/bot wiring.
+export { openDb } from './db';

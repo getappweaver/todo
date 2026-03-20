@@ -1,8 +1,11 @@
 // ---------------------------------------------------------------------------
 // plugins/todo/db.ts — CRUD operations for the todos table
 // ---------------------------------------------------------------------------
-import type { Database } from 'bun:sqlite';
+import { join } from 'path';
 
+import { Database } from 'bun:sqlite';
+
+import { createTodoDraftsTable } from './drafts';
 import type {
   Todo,
   CreateTodoDraft,
@@ -252,4 +255,18 @@ export function deleteTodo(db: Database, id: number): boolean {
   const info = db.prepare('DELETE FROM todos WHERE id = ?').run(id);
 
   return info.changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// DB opener (single source of truth for CLI + plugins)
+// ---------------------------------------------------------------------------
+
+export function openDb(): Database {
+  const db = new Database(join(import.meta.dir, 'db.sqlite'), { strict: true });
+  db.run('PRAGMA foreign_keys = ON');
+  db.run('PRAGMA journal_mode=WAL');
+  createTodoTable(db);
+  createTodoDraftsTable(db);
+
+  return db;
 }

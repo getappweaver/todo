@@ -4,9 +4,12 @@
 
 import type { Database } from 'bun:sqlite';
 
+import type { AgentRunResult } from '@src/backends/types';
+import { getOutputString } from '@src/backends/types';
 import type { PluginIdentity } from '@src/core/plugin';
 
 import { handleTodoAi } from './ai';
+import { parseTodoToolCalls, buildSystemPrompt } from './ai';
 import {
   createTodo,
   createTodosFromDraftTree,
@@ -23,7 +26,6 @@ import {
   hasDraftChildren,
 } from './format';
 import { formatTodoDetail, formatTodoTree } from './format';
-import { buildSystemPrompt, parseTodoToolCalls } from './tool';
 import type { CreateTodoDraft, Todo, UpdateTodoInput } from './types';
 import { CreateTodoInputSchema, TodoStatusSchema } from './types';
 
@@ -226,7 +228,7 @@ export type HandleTodoProps = {
   args: string[];
   db: Database;
   identity: PluginIdentity;
-  runAgent: (prompt: string) => Promise<string>;
+  runAgent: ((prompt: string) => Promise<AgentRunResult>) | null;
   helpText: (alias: string) => string[];
 };
 
@@ -250,6 +252,10 @@ export async function handleTodo({
 
   // --- AI ---
   if (sub === 'ai') {
+    if (!runAgent) {
+      return `!${alias} ai requires an agent backend. Set backend (e.g. !backend opencode-sdk) and try again.`;
+    }
+
     return handleTodoAi({ args: args.slice(1), db, identity, runAgent });
   }
 
@@ -753,6 +759,10 @@ export async function handleTodo({
 
   // --- revise ---
   if (sub === 'revise') {
+    if (!runAgent) {
+      return `!${alias} revise requires an agent backend. Set backend (e.g. !backend opencode-sdk) and try again.`;
+    }
+
     if (draftIdInvalid) {
       return `Usage: !${alias} revise <draft_id> <corrections> (draft_id must be a number)`;
     }
@@ -787,7 +797,7 @@ export async function handleTodo({
     const revisedPrompt = `Revise the following todo: "${entry.input.todo}". Correction: "${corrections}".`;
     const systemPrompt = buildSystemPrompt(revisedPrompt, activeTree);
 
-    const raw = await runAgent(systemPrompt);
+    const raw = getOutputString(await runAgent(systemPrompt));
 
     if (!raw || raw === '(no output)') {
       return 'AI returned no output. Try running: !todo-ai <revised description>';
