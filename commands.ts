@@ -245,9 +245,7 @@ export async function handleTodo({
   const alias = identity.alias;
 
   if (!sub || sub === 'help') {
-    return helpText(alias)
-      .concat([`!${alias} help                         — this message`])
-      .join('\n');
+    return helpText(alias).join('\n');
   }
 
   // --- AI ---

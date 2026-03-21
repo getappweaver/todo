@@ -58,6 +58,9 @@ export const TodoPlugin: BotPlugin = {
     TodoPluginDb = openDb();
   },
   helpText: (alias: string) => [
+    `Todos: nested tasks with priorities and status (pending, in progress, done). Use !${alias} ai for natural-language drafts (accept/decline/revise); use !${alias} add, list, done, and update for direct control.`,
+    '',
+    `!${alias} help — this message`,
     `!${alias} ai <prompt>                  — create a todo draft from natural language`,
     `!${alias} drafts [draft_id]            — list all drafts or show one in detail`,
     `!${alias} accept <draft_id|all>        — confirm a draft and execute it`,
