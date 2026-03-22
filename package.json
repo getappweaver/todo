@@ -1,10 +1,13 @@
 {
   "name": "dm-bot-todo-plugin",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "dmBot": {
     "coreApiVersion": "^7.0.0",
     "description": "Todo management plugin for dm-bot"
   },
   "description": "Todo management plugin for dm-bot",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "contrib:setup": "chmod +x ../../scripts/commit-msg ../../scripts/post-commit ../../scripts/ngit-helper.sh && git config core.hooksPath ../../scripts"
+  }
 }
