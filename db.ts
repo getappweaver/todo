@@ -6,39 +6,55 @@ import { join } from 'path';
 import { Database } from 'bun:sqlite';
 
 import { createTodoDraftsTable } from './drafts';
+import { rowToTodo } from './todo-row';
 import type {
   Todo,
   CreateTodoDraft,
   CreateTodoInput,
   UpdateTodoInput,
-  TodoStatus,
+  TodoWithWinStats,
 } from './types';
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-function rowToTodo(row: Record<string, unknown>): Todo {
-  return {
-    id: Number(row.id),
-    parent_id: row.parent_id != null ? Number(row.parent_id) : null,
-    todo: String(row.todo),
-    status: String(row.status) as TodoStatus,
-    priority:
-      row.priority != null ? (String(row.priority) as Todo['priority']) : null,
-    sort_order: row.sort_order != null ? Number(row.sort_order) : null,
-    description: row.description != null ? String(row.description) : null,
-    tags: row.tags != null ? (JSON.parse(String(row.tags)) as string[]) : null,
-    source: row.source != null ? String(row.source) : null,
-    created_at: Number(row.created_at),
-    updated_at: row.updated_at != null ? Number(row.updated_at) : null,
-    completed_at: row.completed_at != null ? Number(row.completed_at) : null,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Schema migration — called from TodoPlugin.onInit (plugins/todo/init.ts)
 // ---------------------------------------------------------------------------
+
+export const TODO_SETTINGS_FOCUS_KEY = 'focus_id';
+
+function migrateTodoSchema(db: Database): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS todo_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS todo_comparisons (
+      winner_id   INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+      loser_id    INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+      compared_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+      PRIMARY KEY (winner_id, loser_id)
+    )
+  `);
+
+  db.run(
+    'CREATE INDEX IF NOT EXISTS idx_comparisons_winner ON todo_comparisons(winner_id)',
+  );
+
+  db.run(
+    'CREATE INDEX IF NOT EXISTS idx_comparisons_loser ON todo_comparisons(loser_id)',
+  );
+
+  const cols = db.prepare('PRAGMA table_info(todos)').all() as {
+    name: string;
+  }[];
+
+  if (cols.some((c) => c.name === 'priority')) {
+    db.run('ALTER TABLE todos DROP COLUMN priority');
+  }
+}
+
 export function createTodoTable(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS todos (
@@ -46,7 +62,6 @@ export function createTodoTable(db: Database): void {
       parent_id    INTEGER REFERENCES todos(id) ON DELETE CASCADE,
       todo         TEXT    NOT NULL,
       status       TEXT    NOT NULL DEFAULT 'pending',
-      priority     TEXT,
       sort_order   INTEGER,
       description  TEXT,
       tags         TEXT,
@@ -62,6 +77,129 @@ export function createTodoTable(db: Database): void {
   db.run(
     'CREATE INDEX IF NOT EXISTS idx_todos_parent_sort ON todos(parent_id, sort_order)',
   );
+
+  migrateTodoSchema(db);
+}
+
+// ---------------------------------------------------------------------------
+// List ordering (win-rate among siblings; unscored last; then sort_order, created_at)
+// ---------------------------------------------------------------------------
+
+type TodoWithWin = Todo & {
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+};
+
+function compareSortOrder(a: Todo, b: Todo): number {
+  const ao = a.sort_order;
+  const bo = b.sort_order;
+
+  if (ao === null && bo === null) {
+    return a.created_at - b.created_at;
+  }
+
+  if (ao === null) {
+    return -1;
+  }
+
+  if (bo === null) {
+    return 1;
+  }
+
+  if (ao !== bo) {
+    return ao - bo;
+  }
+
+  return a.created_at - b.created_at;
+}
+
+function compareSiblings(a: TodoWithWin, b: TodoWithWin): number {
+  if (a.win_rate === null && b.win_rate === null) {
+    return compareSortOrder(a, b);
+  }
+
+  if (a.win_rate === null) {
+    return 1;
+  }
+
+  if (b.win_rate === null) {
+    return -1;
+  }
+
+  if (b.win_rate !== a.win_rate) {
+    return b.win_rate - a.win_rate;
+  }
+
+  return compareSortOrder(a, b);
+}
+
+function listTodosDepthFirstWinOrdered(db: Database): TodoWithWinStats[] {
+  const rows = db
+    .prepare(
+      `SELECT
+        t.id,
+        t.parent_id,
+        t.todo,
+        t.status,
+        t.sort_order,
+        t.description,
+        t.tags,
+        t.source,
+        t.created_at,
+        t.updated_at,
+        t.completed_at,
+        (SELECT COUNT(*) FROM todo_comparisons w WHERE w.winner_id = t.id) AS wins,
+        (SELECT COUNT(*) FROM todo_comparisons l WHERE l.loser_id = t.id) AS losses
+      FROM todos t`,
+    )
+    .all() as Record<string, unknown>[];
+
+  const withWin: TodoWithWin[] = rows.map((row) => {
+    const base = rowToTodo(row);
+    const wins = Number(row.wins ?? 0);
+    const losses = Number(row.losses ?? 0);
+    const total = wins + losses;
+    const win_rate = total === 0 ? null : wins / total;
+
+    return {
+      ...base,
+      wins,
+      losses,
+      win_rate,
+    };
+  });
+
+  const byParent = new Map<number | null, TodoWithWin[]>();
+
+  for (const t of withWin) {
+    const key = t.parent_id ?? null;
+
+    if (!byParent.has(key)) {
+      byParent.set(key, []);
+    }
+
+    byParent.get(key)!.push(t);
+  }
+
+  for (const arr of byParent.values()) {
+    arr.sort(compareSiblings);
+  }
+
+  const out: TodoWithWinStats[] = [];
+
+  function walk(parentId: number | null): void {
+    const children = byParent.get(parentId) ?? [];
+
+    for (const t of children) {
+      out.push(t);
+      walk(t.id);
+    }
+  }
+
+  walk(null);
+
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,19 +213,19 @@ export function createTodo(
 ): Todo {
   const now = Date.now();
 
-  const info = db.run(
-    `INSERT INTO todos (parent_id, todo, status, priority, description, tags, source, created_at)
-     VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)`,
-    [
-      input.parent_id ?? null,
-      input.todo,
-      input.priority ?? null,
-      input.description ?? null,
-      input.tags ? JSON.stringify(input.tags) : null,
-      source ?? null,
-      now,
-    ],
-  );
+  const info = db
+    .query(
+      `INSERT INTO todos (parent_id, todo, status, description, tags, source, created_at)
+     VALUES ($parentId, $todo, 'pending', $description, $tags, $source, $createdAt)`,
+    )
+    .run({
+      parentId: input.parent_id ?? null,
+      todo: input.todo,
+      description: input.description ?? null,
+      tags: input.tags ? JSON.stringify(input.tags) : null,
+      source: source ?? null,
+      createdAt: now,
+    });
 
   const id = Number(info.lastInsertRowid); // bigint in bun:sqlite
 
@@ -106,7 +244,6 @@ export function createTodosFromDraftTree(
     const input: CreateTodoInput = {
       todo: node.todo,
       parent_id: parentId,
-      priority: node.priority ?? null,
       description: node.description ?? null,
       tags: node.tags ?? null,
     };
@@ -133,23 +270,60 @@ export function getTodo(db: Database, id: number): Todo | null {
   return row ? rowToTodo(row) : null;
 }
 
-export function listTodos(db: Database): Todo[] {
-  // Return all rows in depth-first order by sort_order at each level.
+export function listTodos(db: Database): TodoWithWinStats[] {
+  return listTodosDepthFirstWinOrdered(db);
+}
+
+export function getFocusId(db: Database): number | null {
+  const row = db
+    .prepare(`SELECT value FROM todo_settings WHERE key = ?`)
+    .get(TODO_SETTINGS_FOCUS_KEY) as { value: string } | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  const n = parseInt(String(row.value), 10);
+
+  return Number.isNaN(n) ? null : n;
+}
+
+export function setFocusId(db: Database, id: number): void {
+  db.run(
+    `INSERT INTO todo_settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [TODO_SETTINGS_FOCUS_KEY, String(id)],
+  );
+}
+
+export function clearFocusId(db: Database): void {
+  db.run(`DELETE FROM todo_settings WHERE key = ?`, [TODO_SETTINGS_FOCUS_KEY]);
+}
+
+/** All todo ids in the subtree rooted at `rootId` (includes `rootId`). */
+export function getSubtreeTodoIds(db: Database, rootId: number): Set<number> {
   const rows = db
     .prepare(
-      `WITH RECURSIVE tree(id, parent_id, todo, status, priority, sort_order, description,
-          tags, source, created_at, updated_at, completed_at, depth) AS (
-        SELECT *, 0 FROM todos WHERE parent_id IS NULL
+      `WITH RECURSIVE sub(id) AS (
+        SELECT id FROM todos WHERE id = ?
         UNION ALL
-        SELECT t.*, tree.depth + 1
-        FROM todos t
-        JOIN tree ON t.parent_id = tree.id
+        SELECT t.id FROM todos t JOIN sub ON t.parent_id = sub.id
       )
-      SELECT * FROM tree ORDER BY depth, sort_order, created_at`,
+      SELECT id FROM sub`,
     )
-    .all() as Record<string, unknown>[];
+    .all(rootId) as { id: number }[];
 
-  return rows.map(rowToTodo);
+  return new Set(rows.map((r) => r.id));
+}
+
+export function listTodosInSubtree(
+  db: Database,
+  rootId: number,
+): TodoWithWinStats[] {
+  const ids = getSubtreeTodoIds(db, rootId);
+  const all = listTodos(db);
+
+  return all.filter((t) => ids.has(t.id));
 }
 
 export function listTopLevelTodos(db: Database): Todo[] {
@@ -186,23 +360,23 @@ export function updateTodo(db: Database, input: UpdateTodoInput): Todo | null {
       ? now
       : existing.completed_at;
 
-  db.run(
+  db.query(
     `UPDATE todos SET
-      todo         = ?,
-      status       = ?,
-      priority     = ?,
-      description  = ?,
-      tags         = ?,
-      updated_at   = ?,
-      completed_at = ?
-     WHERE id = ?`,
-    [
-      input.todo ?? existing.todo,
-      input.status ?? existing.status,
-      input.priority !== undefined ? input.priority : existing.priority,
+      todo         = $todo,
+      status       = $status,
+      description  = $description,
+      tags         = $tags,
+      updated_at   = $updatedAt,
+      completed_at = $completedAt
+     WHERE id = $id`,
+  ).run({
+    todo: input.todo ?? existing.todo,
+    status: input.status ?? existing.status,
+    description:
       input.description !== undefined
         ? input.description
-        : existing.description,
+        : (existing.description ?? null),
+    tags:
       input.tags !== undefined
         ? input.tags
           ? JSON.stringify(input.tags)
@@ -210,11 +384,10 @@ export function updateTodo(db: Database, input: UpdateTodoInput): Todo | null {
         : existing.tags
           ? JSON.stringify(existing.tags)
           : null,
-      now,
-      completedAt,
-      input.id,
-    ],
-  );
+    updatedAt: now,
+    completedAt: completedAt,
+    id: input.id,
+  });
 
   return getTodo(db, input.id);
 }
@@ -230,21 +403,27 @@ export function doneTodo(db: Database, id: number, cascade = true): boolean {
 
   if (cascade) {
     // Mark all descendants done via recursive CTE
-    db.run(
+    db.query(
       `WITH RECURSIVE descendants(id) AS (
-        SELECT id FROM todos WHERE id = ?
+        SELECT id FROM todos WHERE id = $id
         UNION ALL
         SELECT t.id FROM todos t JOIN descendants d ON t.parent_id = d.id
       )
-      UPDATE todos SET status = 'done', completed_at = ?, updated_at = ?
+      UPDATE todos SET status = 'done', completed_at = $completedAt, updated_at = $updatedAt
       WHERE id IN (SELECT id FROM descendants)`,
-      [id, now, now],
-    );
+    ).run({
+      completedAt: now,
+      updatedAt: now,
+      id,
+    });
   } else {
-    db.run(
-      `UPDATE todos SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?`,
-      [now, now, id],
-    );
+    db.query(
+      `UPDATE todos SET status = 'done', completed_at = $completedAt, updated_at = $updatedAt WHERE id = $id`,
+    ).run({
+      completedAt: now,
+      updatedAt: now,
+      id: id,
+    });
   }
 
   return true;
@@ -270,3 +449,5 @@ export function openDb(): Database {
 
   return db;
 }
+
+export { rowToTodo } from './todo-row';

@@ -79,8 +79,8 @@ User request: "${userPrompt}"
 
 Instructions:
 - If the user wants to see todos, output type "list".
-- If the user wants to create new todo(s), output type "create". For "create", you must output a single tree: one root node with optional "children" array. Each child has the same shape (todo, priority?, description?, tags?, children?). Use this recursive structure so parent-child relationships are expressed by nesting, not by IDs. One "create" = one tree = one draft. To add multiple unrelated top-level items, output multiple "create" objects (one JSON object per line), each with its own root and optional children.
-- If the user wants to update an existing todo, output type "update". Resolve the todo by name from the active list to its numeric id and only include the fields being changed (id plus status, todo, priority, etc. as needed).
+- If the user wants to create new todo(s), output type "create". For "create", you must output a single tree: one root node with optional "children" array. Each child has the same shape (todo, description?, tags?, children?). Use this recursive structure so parent-child relationships are expressed by nesting, not by IDs. One "create" = one tree = one draft. To add multiple unrelated top-level items, output multiple "create" objects (one JSON object per line), each with its own root and optional children.
+- If the user wants to update an existing todo, output type "update". Resolve the todo by name from the active list to its numeric id and only include the fields being changed (id plus status, todo, etc. as needed).
 - If the user wants to delete a todo, output type "delete".
 - For "create", "update", and "delete": include "original_prompt" at the top level (same level as "type"), set to the user's request verbatim.
 - Important: "update [todo name] status to X" means update the existing todo — use "update" with that todo's id, not "create".
@@ -109,9 +109,7 @@ const BULLET = '- ';
 
 function formatDraftTreeLines(node: CreateTodoDraft, prefix: string): string[] {
   const lines: string[] = [];
-  const pri = node.priority ? ` [${node.priority}]` : '';
-
-  lines.push(`${prefix}${BULLET}${node.todo}${pri}`);
+  lines.push(`${prefix}${BULLET}${node.todo}`);
 
   const extraIndent = prefix + ' '.repeat(BULLET.length);
 
@@ -168,7 +166,6 @@ const UPDATE_PREVIEW_FIELDS: Array<{
 }> = [
   { key: 'todo', label: 'todo' },
   { key: 'status', label: 'status' },
-  { key: 'priority', label: 'priority' },
   { key: 'description', label: 'description' },
   { key: 'tags', label: 'tags' },
 ];
@@ -258,7 +255,7 @@ export async function handleTodoAi({
   const alias = identity.alias;
 
   if (!userPrompt) {
-    return `Usage: !${alias} ai <natural language request>\nExample: !${alias} ai add a high priority todo to take medicine tonight at 9PM`;
+    return `Usage: !${alias} ai <natural language request>\nExample: !${alias} ai add a todo to take medicine tonight at 9PM`;
   }
 
   const allTodos = listTodos(db);
@@ -373,7 +370,7 @@ When creating todos:
 - For parent/child todos, put the entire tree in \`input.children\` inside the same \`create\` call.
 - Do NOT create the parent first and then create children separately using \`parent_id\`.
 - Each node uses the same shape inside \`children\`:
-  { todo, parent_id: null, priority, description, tags, children? }
+  { todo, parent_id: null, description, tags, children? }
 
 After the CLI returns, apply the draft using the reply instructions included in the output:
 - \`!${alias} accept <draft_id>\`

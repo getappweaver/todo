@@ -10,17 +10,14 @@ export const TodoStatusSchema = z.enum([
   'done',
   'cancelled',
 ]);
-export const TodoPrioritySchema = z.enum(['low', 'medium', 'high']);
 
 export type TodoStatus = z.infer<typeof TodoStatusSchema>;
-export type TodoPriority = z.infer<typeof TodoPrioritySchema>;
 
 export const TodoSchema = z.object({
   id: z.number(),
   parent_id: z.number().nullable(),
   todo: z.string(),
   status: TodoStatusSchema,
-  priority: TodoPrioritySchema.nullable(),
   sort_order: z.number().nullable(),
   description: z.string().nullable(),
   tags: z.array(z.string()).nullable(),
@@ -31,6 +28,13 @@ export const TodoSchema = z.object({
 });
 
 export type Todo = z.infer<typeof TodoSchema>;
+
+/** Optional stats when listing (pairwise duel rankings). */
+export type TodoWithWinStats = Todo & {
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+};
 
 /** Any change in this schema MUST be reflected in the tool in .opencode/tool/todo.ts */
 export const CreateTodoInputSchema = z.object({
@@ -44,9 +48,6 @@ export const CreateTodoInputSchema = z.object({
     .describe(
       'ID of the parent todo. NULL for top-level. Call list_todos first to resolve a name to an ID.',
     ),
-  priority: TodoPrioritySchema.nullable().describe(
-    'Optional priority: low, medium, or high',
-  ),
   description: z.string().nullable().describe('Optional longer notes'),
   tags: z
     .array(z.string())
@@ -59,7 +60,6 @@ export type CreateTodoInput = z.infer<typeof CreateTodoInputSchema>;
 export interface CreateTodoDraft {
   todo: string;
   parent_id: number | null;
-  priority: z.infer<typeof TodoPrioritySchema> | null;
   description: string | null;
   tags: string[] | null;
   children?: CreateTodoDraft[];
@@ -77,9 +77,6 @@ export const CreateTodoDraftSchema: z.ZodType<CreateTodoDraft> = z.lazy(() =>
       .describe(
         'ID of the parent todo. NULL for top-level. Call list_todos first to resolve a name to an ID.',
       ),
-    priority: TodoPrioritySchema.nullable().describe(
-      'Optional priority: low, medium, or high',
-    ),
     description: z.string().nullable().describe('Optional longer notes'),
     tags: z
       .array(z.string())
@@ -97,7 +94,6 @@ export const UpdateTodoInputSchema = z.object({
   id: z.number().describe('ID of the todo to update'),
   todo: z.string().min(1).optional().describe('New title'),
   status: TodoStatusSchema.optional().describe('New status'),
-  priority: TodoPrioritySchema.nullable().optional().describe('New priority'),
   description: z.string().nullable().optional().describe('New description'),
   tags: z.array(z.string()).nullable().optional().describe('New tags'),
 });

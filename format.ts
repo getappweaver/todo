@@ -1,15 +1,15 @@
 // ---------------------------------------------------------------------------
 // todos/format.ts — Display helpers for todos
 // ---------------------------------------------------------------------------
-import type { CreateTodoDraft, Todo } from './types';
+import { formatWinRate } from './duel';
+import type { CreateTodoDraft, Todo, TodoWithWinStats } from './types';
 
 const BULLET = '- ';
 
 function draftTreeLines(node: CreateTodoDraft, prefix: string): string[] {
   const lines: string[] = [];
-  const pri = node.priority ? ` [${node.priority}]` : '';
 
-  lines.push(`${prefix}${BULLET}${node.todo}${pri}`);
+  lines.push(`${prefix}${BULLET}${node.todo}`);
 
   const extraIndent = prefix + ' '.repeat(BULLET.length);
 
@@ -78,6 +78,7 @@ const STATUS_ICON: Record<string, string> = {
 
 function buildChildMap(todos: Todo[]): Map<number | null, Todo[]> {
   const map = new Map<number | null, Todo[]>();
+
   for (const t of todos) {
     const key = t.parent_id ?? null;
 
@@ -91,15 +92,41 @@ function buildChildMap(todos: Todo[]): Map<number | null, Todo[]> {
   return map;
 }
 
+function winLine(t: Todo): string {
+  const w = t as TodoWithWinStats;
+
+  if (
+    w.win_rate === undefined &&
+    w.wins === undefined &&
+    w.losses === undefined
+  ) {
+    return '';
+  }
+
+  return ` (${formatWinRate({
+    win_rate: w.win_rate ?? null,
+    wins: w.wins ?? 0,
+    losses: w.losses ?? 0,
+  })})`;
+}
+
 export function formatTodoTree(
   todos: Todo[],
   showDescriptions: boolean,
+  subtreeRootId?: number | null,
 ): string {
   if (todos.length === 0) {
     return 'No todos.';
   }
 
-  const childMap = buildChildMap(todos);
+  const toRender =
+    subtreeRootId != null
+      ? todos.map((t) =>
+          t.id === subtreeRootId ? { ...t, parent_id: null } : t,
+        )
+      : todos;
+
+  const childMap = buildChildMap(toRender);
   const lines: string[] = [];
 
   function render(parentId: number | null, prefix: string) {
@@ -107,9 +134,10 @@ export function formatTodoTree(
 
     children.forEach((t) => {
       const icon = STATUS_ICON[t.status] ?? '[ ]';
-      const pri = t.priority ? ` [${t.priority}]` : '';
       const runIn = `${BULLET}${icon} `;
-      lines.push(`${prefix}${runIn}${t.todo}${pri}  (id: ${t.id})`);
+      const extra = winLine(t);
+
+      lines.push(`${prefix}${runIn}${t.todo}${extra}  (id: ${t.id})`);
 
       if (showDescriptions && t.description?.trim()) {
         const descIndent = prefix + ' '.repeat(runIn.length);
@@ -133,7 +161,6 @@ export function formatTodoDetail(t: Todo): string {
     `ID:          ${t.id}`,
     `Todo:        ${t.todo}`,
     `Status:      ${t.status}`,
-    `Priority:    ${t.priority ?? '—'}`,
     `Parent:      ${t.parent_id ?? '(top-level)'}`,
     `Tags:        ${t.tags?.join(', ') ?? '—'}`,
     `Description: ${t.description ?? '—'}`,

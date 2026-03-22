@@ -51,6 +51,8 @@ export const TodoPlugin: BotPlugin = {
       identity: TodoPlugin.identity,
       runAgent: TodoPluginContext.runAgent,
       helpText: TodoPlugin.helpText,
+      promptFn: TodoPluginContext.promptFn,
+      sendReply: TodoPluginContext.sendReply,
     });
   },
   onInit: (ctx: PluginContext) => {
@@ -58,7 +60,7 @@ export const TodoPlugin: BotPlugin = {
     TodoPluginDb = openDb();
   },
   helpText: (alias: string) => [
-    `Todos: nested tasks with priorities and status (pending, in progress, done). Use !${alias} ai for natural-language drafts (accept/decline/revise); use !${alias} add, list, done, and update for direct control.`,
+    `Todos: nested tasks with pairwise ranking (duel) and status (pending, in progress, done). Use !${alias} ai for natural-language drafts (accept/decline/revise); use !${alias} add, duel, next, list, done, and update for direct control.`,
     '',
     `!${alias} help — this message`,
     `!${alias} ai <prompt>                  — create a todo draft from natural language`,
@@ -68,14 +70,18 @@ export const TodoPlugin: BotPlugin = {
     `!${alias} decline <draft_id>           — discard a draft`,
     `!${alias} add <text>                   — add a top-level todo`,
     `!${alias} add <text> under <parent_id> — add a sub-todo`,
-    `!${alias} list [--pending|--done|--all] — list todos as tree (default: pending)`,
+    `!${alias} focus <id|clear>             — set scope todo for list/duel/next (or clear)`,
+    `!${alias} unfocus                      — remove focus (same as focus clear)`,
+    `!${alias} duel [parent_id] [--reset]   — interactive ranking among children of parent (default: focus or root)`,
+    `!${alias} next [parent_id]             — next leaf among children of parent (default: focus or root)`,
+    `!${alias} list [<id>] [pending|done|all] — tree (default: focus subtree or all; id = subtree root)`,
     `!${alias} list --flat                  — flat list`,
+    `!${alias} list --level <n>             — only depth n (0 = top-level); flat lines`,
     `!${alias} list --desc                  — include descriptions in tree`,
     `!${alias} show <id>                    — show todo detail`,
     `!${alias} done <id>                    — mark done (cascades to children)`,
     `!${alias} start <id>                   — set todo to in progress`,
-    `!${alias} priority <id> <low|medium|high>`,
-    `!${alias} update <id> <field> <value>  — update a field (todo, status, priority, description)`,
+    `!${alias} update <id> <field> <value>  — update a field (todo, status, description)`,
     `!${alias} delete <id>                  — delete todo and all descendants`,
   ],
 };

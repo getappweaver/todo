@@ -7,27 +7,119 @@ import type { Database } from 'bun:sqlite';
 import type { AgentRunResult } from '@src/backends/types';
 import { getOutputString } from '@src/backends/types';
 import type { PluginIdentity } from '@src/core/plugin';
+import { C } from '@src/logger';
 
 import { handleTodoAi } from './ai';
 import { parseTodoToolCalls, buildSystemPrompt } from './ai';
 import {
+  clearFocusId,
   createTodo,
   createTodosFromDraftTree,
   deleteTodo,
   doneTodo,
+  getFocusId,
   getTodo,
   listTodos,
+  listTodosInSubtree,
+  setFocusId,
   updateTodo,
 } from './db';
 import { deleteDraft, getDraft, listDrafts, storeDraft } from './drafts';
+import {
+  handleDuelCommand,
+  handleNextCommand,
+  maybeOfferDuelAfterAdd,
+  formatWinRate,
+} from './duel';
 import {
   formatCreateDraftTree,
   formatDraftReply,
   hasDraftChildren,
 } from './format';
 import { formatTodoDetail, formatTodoTree } from './format';
-import type { CreateTodoDraft, Todo, UpdateTodoInput } from './types';
-import { CreateTodoInputSchema, TodoStatusSchema } from './types';
+import type {
+  CreateTodoDraft,
+  Todo,
+  TodoWithWinStats,
+  UpdateTodoInput,
+} from './types';
+import { TodoStatusSchema } from './types';
+
+// ---------------------------------------------------------------------------
+// List helpers
+// ---------------------------------------------------------------------------
+
+/** Depth in the todo tree: 0 = top-level (`parent_id` null), 1 = direct child of a root, etc. */
+function treeDepth(db: Database, t: Todo): number {
+  let d = 0;
+  let pid = t.parent_id;
+
+  while (pid !== null) {
+    d++;
+    const p = getTodo(db, pid);
+
+    if (!p) {
+      break;
+    }
+
+    pid = p.parent_id;
+  }
+
+  return d;
+}
+
+function extractListPositionals(rest: string[]): string[] {
+  const out: string[] = [];
+
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+
+    if (a.startsWith('--')) {
+      if (a === '--level' && rest[i + 1] !== undefined) {
+        i++;
+      }
+
+      continue;
+    }
+
+    out.push(a);
+  }
+
+  return out;
+}
+
+function looksLikeTodoIdToken(token: string): boolean {
+  return /^\d+$/.test(token.trim());
+}
+
+const STATUS_ICON: Record<string, string> = {
+  pending: '[ ]',
+  in_progress: '[~]',
+  done: '[x]',
+  cancelled: '[-]',
+};
+
+/** Aligned flat rows (same idea as `lbl` + columns in `getStatusLines`). */
+function formatFlatTodoListLines(todos: TodoWithWinStats[]): string {
+  const idCol = Math.max(4, ...todos.map((t) => `#${t.id}`.length));
+  const iconCol = 4;
+
+  const lblId = (id: number) => `${C.bold}${`#${id}`.padEnd(idCol)}${C.reset}`;
+
+  return todos
+    .map((t) => {
+      const icon = (STATUS_ICON[t.status] ?? '[ ]').padEnd(iconCol);
+
+      const rate = formatWinRate({
+        win_rate: t.win_rate,
+        wins: t.wins,
+        losses: t.losses,
+      });
+
+      return `${lblId(t.id)} ${icon} ${t.todo} (${rate})`;
+    })
+    .join('\n');
+}
 
 // ---------------------------------------------------------------------------
 // Preview formatting
@@ -58,11 +150,6 @@ function formatUpdateChanges(
 
   if (input.status !== undefined) {
     parts.push(`status: ${formatVal(old('status'))} -> ${input.status}`);
-  }
-
-  if (input.priority !== undefined) {
-    const newVal = input.priority === null ? '(clear)' : input.priority;
-    parts.push(`priority: ${formatVal(old('priority'))} -> ${newVal}`);
   }
 
   if (input.description !== undefined) {
@@ -111,12 +198,6 @@ function formatUpdateBlockLines(
       : `status: ${formatVal(old('status'))}`,
   );
 
-  lines.push(
-    input.priority !== undefined
-      ? `priority: ${formatVal(old('priority'))} -> ${input.priority === null ? '(clear)' : input.priority}`
-      : `priority: ${formatVal(old('priority'))}`,
-  );
-
   const oldTags = current?.tags ?? null;
   const oldStr = oldTags?.length ? `[${oldTags.join(', ')}]` : '(none)';
 
@@ -161,9 +242,9 @@ function formatDraftRow(
   db: Database,
 ): string {
   if (entry.kind === 'create') {
-    const inp = entry.input as { todo?: string; priority?: string | null };
+    const inp = entry.input as { todo?: string };
 
-    return `#${id} [create] | ${inp.todo ?? '—'} | tree | ${inp.priority ?? '—'}`;
+    return `#${id} [create] | ${inp.todo ?? '—'} | tree`;
   }
 
   if (entry.kind === 'update') {
@@ -230,6 +311,8 @@ export type HandleTodoProps = {
   identity: PluginIdentity;
   runAgent: ((prompt: string) => Promise<AgentRunResult>) | null;
   helpText: (alias: string) => string[];
+  promptFn: (message: string) => Promise<string>;
+  sendReply: (message: string) => Promise<void>;
 };
 
 export async function handleTodo({
@@ -238,6 +321,8 @@ export async function handleTodo({
   identity,
   runAgent,
   helpText,
+  promptFn,
+  sendReply,
 }: HandleTodoProps): Promise<string> {
   const sub = args[0]?.toLowerCase();
   const rest = args.slice(1);
@@ -255,6 +340,64 @@ export async function handleTodo({
     }
 
     return handleTodoAi({ args: args.slice(1), db, identity, runAgent });
+  }
+
+  // --- duel ---
+  if (sub === 'duel') {
+    return handleDuelCommand({
+      args: rest,
+      db,
+      sendReply,
+      promptFn,
+    });
+  }
+
+  // --- next ---
+  if (sub === 'next') {
+    return handleNextCommand({
+      args: rest,
+      db,
+      sendReply,
+      promptFn,
+    });
+  }
+
+  // --- focus ---
+  if (sub === 'focus') {
+    const raw = rest[0]?.trim();
+
+    if (!raw) {
+      return `Usage: !${alias} focus <id|clear>`;
+    }
+
+    if (raw.toLowerCase() === 'clear') {
+      clearFocusId(db);
+
+      return `Focus cleared.`;
+    }
+
+    const id = parseInt(raw, 10);
+
+    if (Number.isNaN(id) || id <= 0) {
+      return `Usage: !${alias} focus <id|clear>`;
+    }
+
+    const todo = getTodo(db, id);
+
+    if (!todo) {
+      return `Todo not found: #${id}`;
+    }
+
+    setFocusId(db, id);
+
+    return `Focus set to #${id}: ${todo.todo}`;
+  }
+
+  // --- unfocus (delete focus row) ---
+  if (sub === 'unfocus') {
+    clearFocusId(db);
+
+    return `Focus cleared.`;
   }
 
   // --- add ---
@@ -288,23 +431,73 @@ export async function handleTodo({
       {
         todo: text,
         parent_id: parentId,
-        priority: null,
         description: null,
         tags: null,
       },
       'dm',
     );
 
-    return `Todo created: #${todo.id}\n${formatTodoDetail(todo)}`;
+    const lines = [`Todo created: #${todo.id}\n${formatTodoDetail(todo)}`];
+
+    const duelMsg = await maybeOfferDuelAfterAdd({
+      db,
+      parentId: todo.parent_id ?? null,
+      newId: todo.id,
+      newTitle: todo.todo,
+      sendReply,
+      promptFn,
+    });
+
+    if (duelMsg) {
+      lines.push('', duelMsg);
+    }
+
+    return lines.join('\n');
   }
 
   // --- list ---
   if (sub === 'list') {
     const flat = rest.includes('--flat');
     const showDesc = rest.includes('--desc');
-    const filterArg = rest.find((a) => !a.startsWith('-'))?.toLowerCase();
+    const levelIdx = rest.indexOf('--level');
+    let level: number | null = null;
 
-    let todos = listTodos(db);
+    if (levelIdx !== -1) {
+      const raw = rest[levelIdx + 1]?.trim();
+      const n = raw !== undefined ? parseInt(raw, 10) : NaN;
+
+      if (raw === undefined || Number.isNaN(n) || n < 0) {
+        return `Usage: !${alias} list [<id>] [pending|done|all] [--flat] [--desc] [--level <n>] (n >= 0)`;
+      }
+
+      level = n;
+    }
+
+    const positionals = extractListPositionals(rest);
+    let rootId: number | null = null;
+    let filterStart = 0;
+
+    if (positionals.length > 0 && looksLikeTodoIdToken(positionals[0])) {
+      const n = parseInt(positionals[0], 10);
+
+      if (n > 0) {
+        rootId = n;
+        filterStart = 1;
+      } else {
+        return `Invalid todo id: ${positionals[0]}`;
+      }
+    } else {
+      rootId = getFocusId(db);
+    }
+
+    const filterArg = positionals[filterStart]?.toLowerCase();
+
+    if (rootId !== null && !getTodo(db, rootId)) {
+      return `Todo not found: #${rootId}`;
+    }
+
+    let todos =
+      rootId === null ? listTodos(db) : listTodosInSubtree(db, rootId);
 
     if (!filterArg || filterArg === 'pending') {
       todos = todos.filter(
@@ -314,20 +507,23 @@ export async function handleTodo({
       todos = todos.filter((t) => t.status === filterArg);
     }
 
+    if (level !== null) {
+      todos = todos.filter((t) => treeDepth(db, t) === level);
+    }
+
     if (todos.length === 0) {
       return 'No todos matching filter.';
     }
 
-    if (flat) {
-      return todos
-        .map(
-          (t) =>
-            `${t.id} ${STATUS_ICON[t.status] ?? '[ ]'} ${t.todo}${t.priority ? ` [${t.priority}]` : ''}`,
-        )
-        .join('\n');
+    if (flat || level !== null) {
+      return formatFlatTodoListLines(todos);
     }
 
-    return formatTodoTree(todos, showDesc);
+    return formatTodoTree(
+      todos,
+      showDesc,
+      rootId === null ? undefined : rootId,
+    );
   }
 
   // --- show ---
@@ -397,36 +593,6 @@ export async function handleTodo({
     return `Todo #${id} set to in progress.`;
   }
 
-  // --- priority ---
-  if (sub === 'priority') {
-    const idRaw = rest[0]?.trim();
-    const pri = rest[1]?.trim();
-
-    if (!idRaw || !pri) {
-      return `Usage: !${alias} priority <id> <low|medium|high>`;
-    }
-
-    const id = parseInt(idRaw, 10);
-
-    if (Number.isNaN(id)) {
-      return `Usage: !${alias} priority <id> <low|medium|high> (id must be a number)`;
-    }
-
-    const parsed = CreateTodoInputSchema.shape.priority.safeParse(pri);
-
-    if (!parsed.success) {
-      return `Priority must be: low, medium, or high`;
-    }
-
-    const updated = updateTodo(db, { id, priority: parsed.data });
-
-    if (!updated) {
-      return `Todo not found: #${id}`;
-    }
-
-    return `Priority updated.\n${formatTodoDetail(updated)}`;
-  }
-
   // --- update ---
   if (sub === 'update') {
     const idRaw = rest[0]?.trim();
@@ -472,18 +638,6 @@ export async function handleTodo({
         return `Status updated.\n${formatTodoDetail(updated!)}`;
       }
 
-      case 'priority': {
-        const priParsed = CreateTodoInputSchema.shape.priority.safeParse(value);
-
-        if (!priParsed.success) {
-          return 'Priority must be: low, medium, or high';
-        }
-
-        const updated = updateTodo(db, { id, priority: priParsed.data });
-
-        return `Priority updated.\n${formatTodoDetail(updated!)}`;
-      }
-
       case 'description': {
         const updated = updateTodo(db, { id, description: value });
 
@@ -491,7 +645,7 @@ export async function handleTodo({
       }
 
       default:
-        return `Unknown field: ${field}. Supported: todo, status, priority, description`;
+        return `Unknown field: ${field}. Supported: todo, status, description`;
     }
   }
 
@@ -567,7 +721,7 @@ export async function handleTodo({
               v === null ? '—' : Array.isArray(v) ? v.join(', ') : String(v);
 
             const oldVal =
-              existing && (k === 'status' || k === 'priority' || k === 'todo')
+              existing && (k === 'status' || k === 'todo')
                 ? ((existing as Record<string, unknown>)[k] ?? '—')
                 : null;
 
@@ -859,16 +1013,5 @@ export async function handleTodo({
 
   return `Unknown subcommand: ${sub}. Use !todo help.`;
 }
-
-// ---------------------------------------------------------------------------
-// Internal constants
-// ---------------------------------------------------------------------------
-
-const STATUS_ICON: Record<string, string> = {
-  pending: '[ ]',
-  in_progress: '[~]',
-  done: '[x]',
-  cancelled: '[-]',
-};
 
 export { formatDraftPreview };
