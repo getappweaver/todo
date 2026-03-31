@@ -21,11 +21,13 @@ import {
   getTodo,
   listTodos,
   listTodosInSubtree,
+  moveTodo,
   setFocusId,
   updateTodo,
 } from './db';
 import { deleteDraft, getDraft, listDrafts, storeDraft } from './drafts';
 import {
+  handleCurrentCommand,
   handleDuelCommand,
   handleNextCommand,
   maybeOfferDuelAfterAdd,
@@ -34,9 +36,13 @@ import {
 import {
   formatCreateDraftTree,
   formatDraftReply,
+  formatTodoDetail,
+  formatTodoSubtreeListHeader,
+  formatTodoTree,
   hasDraftChildren,
+  isActiveListTodo,
+  TODO_STATUS_ICON,
 } from './format';
-import { formatTodoDetail, formatTodoTree } from './format';
 import type {
   CreateTodoDraft,
   Todo,
@@ -92,13 +98,6 @@ function looksLikeTodoIdToken(token: string): boolean {
   return /^\d+$/.test(token.trim());
 }
 
-const STATUS_ICON: Record<string, string> = {
-  pending: '[ ]',
-  in_progress: '[~]',
-  done: '[x]',
-  cancelled: '[-]',
-};
-
 /** Aligned flat rows (same idea as `lbl` + columns in `getStatusLines`). */
 function formatFlatTodoListLines(todos: TodoWithWinStats[]): string {
   const idCol = Math.max(4, ...todos.map((t) => `#${t.id}`.length));
@@ -108,7 +107,7 @@ function formatFlatTodoListLines(todos: TodoWithWinStats[]): string {
 
   return todos
     .map((t) => {
-      const icon = (STATUS_ICON[t.status] ?? '[ ]').padEnd(iconCol);
+      const icon = (TODO_STATUS_ICON[t.status] ?? '[ ]').padEnd(iconCol);
 
       const rate = formatWinRate({
         win_rate: t.win_rate,
@@ -362,6 +361,16 @@ export async function handleTodo({
     });
   }
 
+  // --- current ---
+  if (sub === 'current') {
+    return handleCurrentCommand({
+      args: rest,
+      db,
+      sendReply,
+      promptFn,
+    });
+  }
+
   // --- focus ---
   if (sub === 'focus') {
     const raw = rest[0]?.trim();
@@ -496,13 +505,16 @@ export async function handleTodo({
       return `Todo not found: #${rootId}`;
     }
 
+    const subtreeHeader =
+      rootId === null
+        ? ''
+        : formatTodoSubtreeListHeader(rootId, getTodo(db, rootId)!.todo);
+
     let todos =
       rootId === null ? listTodos(db) : listTodosInSubtree(db, rootId);
 
     if (!filterArg || filterArg === 'pending') {
-      todos = todos.filter(
-        (t) => t.status !== 'done' && t.status !== 'cancelled',
-      );
+      todos = todos.filter(isActiveListTodo);
     } else if (filterArg !== 'all') {
       todos = todos.filter((t) => t.status === filterArg);
     }
@@ -512,11 +524,11 @@ export async function handleTodo({
     }
 
     if (todos.length === 0) {
-      return 'No todos matching filter.';
+      return `${subtreeHeader}No todos matching filter.`;
     }
 
     if (flat || level !== null) {
-      return formatFlatTodoListLines(todos);
+      return subtreeHeader + formatFlatTodoListLines(todos);
     }
 
     return formatTodoTree(
@@ -647,6 +659,88 @@ export async function handleTodo({
       default:
         return `Unknown field: ${field}. Supported: todo, status, description`;
     }
+  }
+
+  // --- move ---
+  if (sub === 'move') {
+    const idRaw = rest[0]?.trim();
+
+    if (!idRaw) {
+      return `Usage: !${alias} move <id> [under <parent_id>]`;
+    }
+
+    const id = parseInt(idRaw, 10);
+
+    if (Number.isNaN(id) || id <= 0) {
+      return `Usage: !${alias} move <id> [under <parent_id>] (id must be a positive number)`;
+    }
+
+    let newParentId: number | null = null;
+
+    if (rest.length > 1) {
+      const kw = rest[1]?.toLowerCase();
+
+      if (kw !== 'under' || rest.length < 3) {
+        return `Usage: !${alias} move <id> [under <parent_id>]`;
+      }
+
+      const parentRaw = rest[2]?.trim();
+
+      if (!parentRaw || !/^\d+$/.test(parentRaw)) {
+        return `Usage: !${alias} move <id> under <parent_id> (parent_id must be a positive number)`;
+      }
+
+      const p = parseInt(parentRaw, 10);
+
+      if (p <= 0) {
+        return `Invalid parent id.`;
+      }
+
+      if (p === id) {
+        return `Cannot move #${id} under itself.`;
+      }
+
+      newParentId = p;
+
+      if (rest.length > 3) {
+        return `Usage: !${alias} move <id> [under <parent_id>]`;
+      }
+    }
+
+    const result = moveTodo(db, id, newParentId);
+
+    if (!result.ok) {
+      switch (result.reason) {
+        case 'not_found':
+          return `Todo not found: #${id}`;
+        case 'parent_not_found':
+          return `Parent todo not found: #${newParentId}`;
+        case 'self_parent':
+          return `Cannot move #${id} under itself.`;
+        case 'cycle':
+          return `Cannot move #${id} under a descendant (would create a cycle).`;
+        default:
+          return `Move failed.`;
+      }
+    }
+
+    if (result.unchanged) {
+      const t = result.todo;
+
+      const parentLabel =
+        t.parent_id === null ? 'top level' : `under #${t.parent_id}`;
+
+      return `Todo #${id} is already at ${parentLabel}.`;
+    }
+
+    const t = result.todo;
+
+    const where =
+      t.parent_id === null
+        ? 'top level'
+        : `under #${t.parent_id} "${getTodo(db, t.parent_id)?.todo ?? '?'}"`;
+
+    return `Moved #${id} to ${where}.\n${formatTodoDetail(t)}`;
   }
 
   // --- delete ---
@@ -937,9 +1031,7 @@ export async function handleTodo({
 
     const allTodos = listTodos(db);
 
-    const activeTodos = allTodos.filter(
-      (t) => t.status !== 'done' && t.status !== 'cancelled',
-    );
+    const activeTodos = allTodos.filter(isActiveListTodo);
 
     const activeTree =
       activeTodos.length > 0

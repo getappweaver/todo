@@ -14,9 +14,17 @@ import { parseToolCalls } from '@src/tools/utils';
 import { getTodo, listTodos } from './db';
 import { storeDraft } from './drafts';
 import { formatDraftReply } from './format';
-import { formatTodoTree } from './format';
-import type { CreateTodoDraft } from './types';
-import { CreateTodoDraftSchema, UpdateTodoInputSchema } from './types';
+import {
+  filterTodosForListTool,
+  formatTodoTree,
+  isActiveListTodo,
+} from './format';
+import type { CreateTodoDraft, TodoStatus } from './types';
+import {
+  CreateTodoDraftSchema,
+  TodoStatusSchema,
+  UpdateTodoInputSchema,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -24,8 +32,17 @@ import { CreateTodoDraftSchema, UpdateTodoInputSchema } from './types';
 
 const TodoListCallSchema = z.object({
   type: z.literal('list'),
-  filter: z.enum(['pending', 'done', 'all']).optional(),
-  desc: z.boolean().optional(),
+  filter: z
+    .array(TodoStatusSchema)
+    .min(1)
+    .optional()
+    .describe(
+      'Omit for active todos (pending + in_progress; excludes done and cancelled), same as `!todo list` with no filter. If set, include only rows whose status is in this array — combine any statuses (e.g. ["in_progress"] only, or all four for everything).',
+    ),
+  desc: z
+    .boolean()
+    .optional()
+    .describe('When true, include todo descriptions in the formatted list.'),
 });
 
 const TodoCreateCallSchema = z.object({
@@ -60,6 +77,18 @@ export const skillDescription = 'Todo management via local dm-bot CLI tools.';
 
 type TodoToolCall = z.infer<typeof TodoToolCallSchema>;
 
+function emptyTodoListMessage(filter: TodoStatus[] | undefined): string {
+  if (filter === undefined) {
+    return 'No active todos.';
+  }
+
+  if (filter.length === 1 && filter[0] === 'done') {
+    return 'No done todos.';
+  }
+
+  return 'No todos matching filter.';
+}
+
 // ---------------------------------------------------------------------------
 // System prompt
 // ---------------------------------------------------------------------------
@@ -72,13 +101,13 @@ export function buildSystemPrompt(
 
   return `You are managing a todo list for the user. Your output is used by the system to create draft todo items. The user will then review each draft and can accept it (create real todos), decline it, or ask for revisions. Revise applies to the whole draft (e.g. a whole tree), not a single item.
 
-Active todos (pending and in progress):
+Active todos (status pending or in_progress — not done, not cancelled):
 ${activeTree}
 
 User request: "${userPrompt}"
 
 Instructions:
-- If the user wants to see todos, output type "list".
+- If the user wants to see todos, output type "list". For "list", omit "filter" for active todos (pending + in_progress; not done or cancelled). Only include "filter" when you need a subset or mix of statuses: a JSON array like ["in_progress"], ["done"], or ["pending","in_progress","done","cancelled"] for all. For a generic "show my todos" request, omit "filter".
 - If the user wants to create new todo(s), output type "create". For "create", you must output a single tree: one root node with optional "children" array. Each child has the same shape (todo, description?, tags?, children?). Use this recursive structure so parent-child relationships are expressed by nesting, not by IDs. One "create" = one tree = one draft. To add multiple unrelated top-level items, output multiple "create" objects (one JSON object per line), each with its own root and optional children.
 - If the user wants to update an existing todo, output type "update". Resolve the todo by name from the active list to its numeric id and only include the fields being changed (id plus status, todo, etc. as needed).
 - If the user wants to delete a todo, output type "delete".
@@ -260,9 +289,7 @@ export async function handleTodoAi({
 
   const allTodos = listTodos(db);
 
-  const activeTodos = allTodos.filter(
-    (t) => t.status !== 'done' && t.status !== 'cancelled',
-  );
+  const activeTodos = allTodos.filter(isActiveListTodo);
 
   const activeTree =
     activeTodos.length > 0
@@ -298,25 +325,17 @@ export async function handleTodoAi({
   const calls = fulfilled.map((r) => r.value);
 
   // list: execute immediately
-  if (calls.find((c) => c.type === 'list')) {
-    const todos = listTodos(db);
-    const listCall = calls.find((c) => c.type === 'list');
-    const filter = listCall?.filter ?? 'pending';
-    const desc = listCall?.desc ?? false;
+  const listCall = calls.find((c) => c.type === 'list');
 
-    const filtered =
-      filter === 'pending'
-        ? todos.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
-        : filter === 'done'
-          ? todos.filter((t) => t.status === 'done')
-          : todos;
+  if (listCall?.type === 'list') {
+    const todos = listTodos(db);
+    const statusFilter = listCall.filter;
+    const desc = listCall.desc ?? false;
+
+    const filtered = filterTodosForListTool(todos, statusFilter);
 
     return filtered.length === 0
-      ? filter === 'done'
-        ? 'No done todos.'
-        : filter === 'all'
-          ? 'No todos.'
-          : 'No active todos.'
+      ? emptyTodoListMessage(statusFilter)
       : formatTodoTree(filtered, desc);
   }
 
@@ -377,7 +396,11 @@ After the CLI returns, apply the draft using the reply instructions included in 
 - \`!${alias} revise <draft_id> <corrections>\`
 - \`!${alias} decline <draft_id>\`
 
+List policy:
+- For \`list\`, omit \`filter\` for active todos (\`pending\` + \`in_progress\`; not \`done\` or \`cancelled\`), same as \`!${alias} list\` with no filter. If \`filter\` is set, it must be a non-empty array of statuses to include (e.g. \`["in_progress"]\`, \`["done"]\`, or all four for everything). Combine statuses as needed.
+
 Output policy:
+- For \`list\`, return the tool output **verbatim**. Lines use a checkbox prefix (\`[ ]\`, \`[~]\`, etc.) and tree lines end with \`(id: N)\`. Do not rewrite into your own bullets, do not move IDs into backticks, and do not drop the checkboxes.
 - For mutating calls (\`create\`, \`update\`, \`delete\`), return the CLI output to the user verbatim.
 - Do NOT summarize, shorten, or replace it with only "Created draft #...".
 - The user must see the full draft preview text and reply commands exactly as returned.
@@ -398,22 +421,13 @@ export async function executeTool({
   switch (call.type) {
     case 'list': {
       const todos = listTodos(db);
-      const filter = call.filter ?? 'pending';
+      const statusFilter = call.filter;
       const desc = call.desc ?? false;
 
-      const filtered =
-        filter === 'pending'
-          ? todos.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
-          : filter === 'done'
-            ? todos.filter((t) => t.status === 'done')
-            : todos;
+      const filtered = filterTodosForListTool(todos, statusFilter);
 
       return filtered.length === 0
-        ? filter === 'done'
-          ? 'No done todos.'
-          : filter === 'all'
-            ? 'No todos.'
-            : 'No active todos.'
+        ? emptyTodoListMessage(statusFilter)
         : formatTodoTree(filtered, desc);
     }
 

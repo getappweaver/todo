@@ -2,7 +2,12 @@
 // todos/format.ts — Display helpers for todos
 // ---------------------------------------------------------------------------
 import { formatWinRate } from './duel';
-import type { CreateTodoDraft, Todo, TodoWithWinStats } from './types';
+import type {
+  CreateTodoDraft,
+  Todo,
+  TodoStatus,
+  TodoWithWinStats,
+} from './types';
 
 const BULLET = '- ';
 
@@ -69,12 +74,36 @@ export function formatCreateDraftTree(node: CreateTodoDraft): string {
   return draftTreeLines(node, '  ').join('\n');
 }
 
-const STATUS_ICON: Record<string, string> = {
+/** Checkbox prefix per status (tree and flat list). */
+export const TODO_STATUS_ICON: Record<string, string> = {
   pending: '[ ]',
   in_progress: '[~]',
   done: '[x]',
   cancelled: '[-]',
 };
+
+/**
+ * Todos shown for `!todo list` with no filter, and for the todo tool when `filter` is omitted:
+ * includes `pending` and `in_progress`, excludes `done` and `cancelled`.
+ */
+export function isActiveListTodo(t: { status: string }): boolean {
+  return t.status !== 'done' && t.status !== 'cancelled';
+}
+
+/**
+ * List tool semantics: omit `filter` → active todos (same as `isActiveListTodo`).
+ * With `filter`, keep only rows whose `status` is in the array (combine freely).
+ */
+export function filterTodosForListTool(
+  todos: Todo[],
+  filter: TodoStatus[] | undefined,
+): Todo[] {
+  if (filter === undefined) {
+    return todos.filter(isActiveListTodo);
+  }
+
+  return todos.filter((t) => filter.includes(t.status));
+}
 
 function buildChildMap(todos: Todo[]): Map<number | null, Todo[]> {
   const map = new Map<number | null, Todo[]>();
@@ -110,6 +139,18 @@ function winLine(t: Todo): string {
   })})`;
 }
 
+/**
+ * Shown when `!todo list` is scoped to a subtree (saved focus or explicit root id).
+ */
+export function formatTodoSubtreeListHeader(
+  rootId: number,
+  rootTitle: string,
+): string {
+  const safe = rootTitle.replace(/\s+/g, ' ').trim() || '(unknown)';
+
+  return `Focus to: #${rootId} "${safe}"\ntype "!todo unfocus" to return to top-level\n\n`;
+}
+
 export function formatTodoTree(
   todos: Todo[],
   showDescriptions: boolean,
@@ -118,6 +159,14 @@ export function formatTodoTree(
   if (todos.length === 0) {
     return 'No todos.';
   }
+
+  const subtreeHeader =
+    subtreeRootId != null
+      ? formatTodoSubtreeListHeader(
+          subtreeRootId,
+          todos.find((t) => t.id === subtreeRootId)?.todo ?? '(unknown)',
+        )
+      : '';
 
   const toRender =
     subtreeRootId != null
@@ -133,7 +182,7 @@ export function formatTodoTree(
     const children = childMap.get(parentId) ?? [];
 
     children.forEach((t) => {
-      const icon = STATUS_ICON[t.status] ?? '[ ]';
+      const icon = TODO_STATUS_ICON[t.status] ?? '[ ]';
       const runIn = `${BULLET}${icon} `;
       const extra = winLine(t);
 
@@ -153,7 +202,7 @@ export function formatTodoTree(
 
   render(null, '  ');
 
-  return lines.join('\n');
+  return subtreeHeader + lines.join('\n');
 }
 
 export function formatTodoDetail(t: Todo): string {

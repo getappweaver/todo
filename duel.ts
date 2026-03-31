@@ -6,9 +6,37 @@ import type { Database, SQLQueryBindings } from 'bun:sqlite';
 
 import { PROMPT_SESSION_EXIT } from '@src/prompt-session';
 
-import { getFocusId } from './db';
+import { getFocusId, getTodoPathFromScopeToLeaf } from './db';
 import { rowToTodo } from './todo-row';
 import type { Todo } from './types';
+
+const PATH_STATUS_ICON: Record<string, string> = {
+  pending: '[ ]',
+  in_progress: '[~]',
+  done: '[x]',
+  cancelled: '[-]',
+};
+
+const PATH_BULLET = '- ';
+
+/** Tree spine matching list format; win rate only on the leaf line (ranked row). */
+function formatLeafWithAncestorPath(path: Todo[], leaf: RankedTodo): string {
+  if (path.length === 0) {
+    return '';
+  }
+
+  const lines = path.map((t, i) => {
+    const prefix = '  '.repeat(2 * (i + 1));
+    const icon = PATH_STATUS_ICON[t.status] ?? '[ ]';
+    const runIn = `${PATH_BULLET}${icon} `;
+    const isLeafLine = t.id === leaf.id;
+    const winPart = isLeafLine ? ` (${formatWinRate(leaf)})` : '';
+
+    return `${prefix}${runIn}${t.todo}${winPart}  (id: ${t.id})`;
+  });
+
+  return lines.join('\n');
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,25 +96,32 @@ export function getParentId(args: string[], db: Database): number | null {
 }
 
 /**
- * First leaf in win-rank order: DFS — try each sibling in rank order; if it has active
- * children, take the best leaf in its subtree before the next sibling.
- * Passes ranked rows down so each scope is fetched once (no duplicate getRankedSiblings).
+ * All leaf todos in win-rank DFS order (siblings ranked, then recurse into children).
  */
-function nextLeafFromRanked(
+function collectLeavesInDFSOrder(
   db: Database,
   ranked: RankedTodo[],
-): RankedTodo | null {
+): RankedTodo[] {
+  const out: RankedTodo[] = [];
+
   for (const t of ranked) {
     const childRanked = getRankedSiblings(db, t.id);
 
     if (childRanked.length === 0) {
-      return t;
+      out.push(t);
+    } else {
+      out.push(...collectLeavesInDFSOrder(db, childRanked));
     }
+  }
 
-    const deeper = nextLeafFromRanked(db, childRanked);
+  return out;
+}
 
-    if (deeper) {
-      return deeper;
+/** First pending leaf strictly after `leaves[0]` in DFS order (the "current" leaf). */
+function firstPendingLeafAfterFirst(leaves: RankedTodo[]): RankedTodo | null {
+  for (let i = 1; i < leaves.length; i++) {
+    if (leaves[i].status === 'pending') {
+      return leaves[i];
     }
   }
 
@@ -571,11 +606,11 @@ export async function maybeOfferDuelAfterAdd(props: {
   }
 
   const answer = await promptFn(
-    `Place "${newTitle}" among ${siblings.length} sibling(s)? (yes/no)`,
+    `"${newTitle}" added among ${siblings.length} sibling(s). Want to duel? (yes/no)`,
   );
 
   if (answer === PROMPT_SESSION_EXIT) {
-    return `Placement duel cancelled.`;
+    return `Duel cancelled.`;
   }
 
   if (answer.toLowerCase().startsWith('y')) {
@@ -587,38 +622,72 @@ export async function maybeOfferDuelAfterAdd(props: {
   return null;
 }
 
-export async function handleNextCommand(props: {
+type MaybePromptDuelUnscoredProps = {
+  db: Database;
+  parentId: number | null;
+  sendReply: SendReplyFn;
+  promptFn: PromptFn;
+  unscored: RankedTodo[];
+};
+
+async function maybePromptDuelForUnscored(
+  props: MaybePromptDuelUnscoredProps,
+): Promise<string | null> {
+  const { db, parentId, sendReply, promptFn, unscored } = props;
+
+  if (unscored.length === 0) {
+    return null;
+  }
+
+  const answer = await promptFn(
+    `⚠ ${unscored.length} item(s) have no comparisons yet.\n` +
+      `Score them now for better results? (yes/no)\n` +
+      `(If skipped, unscored items are treated as lowest priority.)`,
+  );
+
+  if (answer === PROMPT_SESSION_EXIT) {
+    return `Cancelled.`;
+  }
+
+  if (answer.toLowerCase().startsWith('y')) {
+    await startDuelSession({ db, parentId, sendReply, promptFn });
+
+    return `Duel session finished.`;
+  }
+
+  return null;
+}
+
+type HandleScopeLeafCommandProps = {
   args: string[];
   db: Database;
   sendReply: SendReplyFn;
   promptFn: PromptFn;
-}): Promise<string> {
+};
+
+export async function handleCurrentCommand(
+  props: HandleScopeLeafCommandProps,
+): Promise<string> {
   const { args, db, sendReply, promptFn } = props;
   const parentId = getParentId(args, db);
   const ranked = getRankedSiblings(db, parentId);
   const unscored = ranked.filter((t) => t.win_rate === null);
 
-  if (unscored.length > 0) {
-    const answer = await promptFn(
-      `⚠ ${unscored.length} item(s) have no comparisons yet.\n` +
-        `Score them now for better results? (yes/no)\n` +
-        `(If skipped, unscored items are treated as lowest priority.)`,
-    );
+  const duelEarly = await maybePromptDuelForUnscored({
+    db,
+    parentId,
+    sendReply,
+    promptFn,
+    unscored,
+  });
 
-    if (answer === PROMPT_SESSION_EXIT) {
-      return `Cancelled.`;
-    }
-
-    if (answer.toLowerCase().startsWith('y')) {
-      await startDuelSession({ db, parentId, sendReply, promptFn });
-
-      return `Duel session finished.`;
-    }
+  if (duelEarly !== null) {
+    return duelEarly;
   }
 
-  const next = nextLeafFromRanked(db, ranked);
+  const leaves = collectLeavesInDFSOrder(db, ranked);
 
-  if (!next) {
+  if (leaves.length === 0) {
     if (ranked.length === 0) {
       return `No pending items.`;
     }
@@ -626,5 +695,51 @@ export async function handleNextCommand(props: {
     return `No leaf items at this scope — every open item still has open subtasks.`;
   }
 
-  return `Next: [#${next.id}] ${next.todo} (${formatWinRate(next)})`;
+  const current = leaves[0];
+  const path = getTodoPathFromScopeToLeaf(db, current.id, parentId);
+  const tree = formatLeafWithAncestorPath(path, current);
+
+  return `Current:\n${tree}`;
+}
+
+export async function handleNextCommand(
+  props: HandleScopeLeafCommandProps,
+): Promise<string> {
+  const { args, db, sendReply, promptFn } = props;
+  const parentId = getParentId(args, db);
+  const ranked = getRankedSiblings(db, parentId);
+  const unscored = ranked.filter((t) => t.win_rate === null);
+
+  const duelEarly = await maybePromptDuelForUnscored({
+    db,
+    parentId,
+    sendReply,
+    promptFn,
+    unscored,
+  });
+
+  if (duelEarly !== null) {
+    return duelEarly;
+  }
+
+  const leaves = collectLeavesInDFSOrder(db, ranked);
+
+  if (leaves.length === 0) {
+    if (ranked.length === 0) {
+      return `No pending items.`;
+    }
+
+    return `No leaf items at this scope — every open item still has open subtasks.`;
+  }
+
+  const next = firstPendingLeafAfterFirst(leaves);
+
+  if (!next) {
+    return `No more pending leaves queued after the current one in this scope.`;
+  }
+
+  const path = getTodoPathFromScopeToLeaf(db, next.id, parentId);
+  const tree = formatLeafWithAncestorPath(path, next);
+
+  return `Next:\n${tree}`;
 }

@@ -270,6 +270,48 @@ export function getTodo(db: Database, id: number): Todo | null {
   return row ? rowToTodo(row) : null;
 }
 
+/**
+ * Single spine from scope to leaf: walk up from `leafId` until the node whose parent is
+ * `scopeParentId`, reverse to root-ward order, then prepend the scope node when
+ * `scopeParentId` is non-null (so the path is readable under !todo next/current scope).
+ */
+export function getTodoPathFromScopeToLeaf(
+  db: Database,
+  leafId: number,
+  scopeParentId: number | null,
+): Todo[] {
+  const up: Todo[] = [];
+  let cur: number | null = leafId;
+
+  while (cur !== null) {
+    const t = getTodo(db, cur);
+
+    if (!t) {
+      break;
+    }
+
+    up.push(t);
+
+    if (t.parent_id === scopeParentId) {
+      break;
+    }
+
+    cur = t.parent_id;
+  }
+
+  up.reverse();
+
+  if (scopeParentId !== null) {
+    const scopeNode = getTodo(db, scopeParentId);
+
+    if (scopeNode) {
+      return [scopeNode, ...up];
+    }
+  }
+
+  return up;
+}
+
 export function listTodos(db: Database): TodoWithWinStats[] {
   return listTodosDepthFirstWinOrdered(db);
 }
@@ -390,6 +432,86 @@ export function updateTodo(db: Database, input: UpdateTodoInput): Todo | null {
   });
 
   return getTodo(db, input.id);
+}
+
+export type MoveTodoResult =
+  | { ok: true; todo: Todo; unchanged: boolean }
+  | {
+      ok: false;
+      reason: 'not_found' | 'parent_not_found' | 'self_parent' | 'cycle';
+    };
+
+/**
+ * Reparent a todo (and its existing subtree). `newParentId` null = top level.
+ * Rejects moving under self or under a descendant (cycle).
+ */
+export function moveTodo(
+  db: Database,
+  id: number,
+  newParentId: number | null,
+): MoveTodoResult {
+  const t = getTodo(db, id);
+
+  if (!t) {
+    return { ok: false, reason: 'not_found' };
+  }
+
+  const curParent = t.parent_id ?? null;
+  const nextParent = newParentId ?? null;
+
+  if (curParent === nextParent) {
+    return { ok: true, todo: t, unchanged: true };
+  }
+
+  if (newParentId !== null) {
+    if (newParentId === id) {
+      return { ok: false, reason: 'self_parent' };
+    }
+
+    const parent = getTodo(db, newParentId);
+
+    if (!parent) {
+      return { ok: false, reason: 'parent_not_found' };
+    }
+
+    if (getSubtreeTodoIds(db, id).has(newParentId)) {
+      return { ok: false, reason: 'cycle' };
+    }
+  }
+
+  const now = Date.now();
+
+  const maxSortRow =
+    newParentId === null
+      ? (db
+          .prepare(
+            `SELECT COALESCE(MAX(sort_order), -1) AS m FROM todos WHERE parent_id IS NULL AND id != ?`,
+          )
+          .get(id) as { m: number } | undefined)
+      : (db
+          .prepare(
+            `SELECT COALESCE(MAX(sort_order), -1) AS m FROM todos WHERE parent_id = ? AND id != ?`,
+          )
+          .get(newParentId, id) as { m: number } | undefined);
+
+  const nextSort = (maxSortRow?.m ?? -1) + 1;
+
+  db.query(
+    `UPDATE todos SET parent_id = $parentId, sort_order = $sortOrder, updated_at = $updatedAt WHERE id = $id`,
+  ).run({
+    parentId: newParentId,
+    sortOrder: nextSort,
+    updatedAt: now,
+    id,
+  });
+
+  const todo = getTodo(db, id);
+
+  if (!todo) {
+    return { ok: false, reason: 'not_found' };
+  }
+
+  return { ok: true, todo, unchanged: false };
 }
 
 export function doneTodo(db: Database, id: number, cascade = true): boolean {
