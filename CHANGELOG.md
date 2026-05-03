@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v4.1.1] - 2026-05-03
+
+- licence (878839c)
+
 ## [v4.1.0] - 2026-05-03
 
-- refactor: modularize todo plugin architecture (b378919)
+- refactor: modularize todo plugin architecture (55cd649)
 
 ## [v3.1.0] - 2026-03-31
 
