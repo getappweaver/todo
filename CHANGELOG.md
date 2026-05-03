@@ -4,11 +4,15 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v4.1.0] - 2026-05-03
+
+- refactor: modularize todo plugin architecture (b378919)
+
 ## [v3.1.0] - 2026-03-31
 
 - duel scoring (230f472)
 - new contrib setup script (e0da71f)
-- move command, and other fixes (835b22b)
+- move command, and other fixes (d12cd24)
 
 ## [v3.0.1] - 2026-03-22
 

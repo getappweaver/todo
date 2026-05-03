@@ -1,8 +1,4 @@
-// ---------------------------------------------------------------------------
-// plugins/todo/todo-row.ts — Map SQLite rows to Todo
-// ---------------------------------------------------------------------------
-
-import type { Todo, TodoStatus } from './types';
+import type { Todo, TodoStatus } from '../types/todos';
 
 export function rowToTodo(row: Record<string, unknown>): Todo {
   return {

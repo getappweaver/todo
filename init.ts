@@ -9,11 +9,17 @@ import type { Database } from 'bun:sqlite';
 import {
   parsePluginPackageJson,
   type BotPlugin,
+  type PluginInvocationContext,
   type PluginContext,
 } from '@src/core/plugin';
+import type { WebNodeRoot } from '@src/web/ui-schema';
 
-import { handleTodo } from './commands';
-import { openDb } from './db';
+import { handleTodo } from './adapter';
+import { aiDefinition } from './ai';
+import { openDb } from './db/open';
+import { commandDefinition } from './definition';
+import { getTodoHelpLines } from './help';
+import { todoStories } from './stories';
 
 const pluginDir = import.meta.dir;
 const alias = basename(pluginDir);
@@ -36,7 +42,10 @@ export const TodoPlugin: BotPlugin = {
     version: todoPkg.version,
     description: todoPkg.description,
   },
-  handler: (args: string[]) => {
+  handler: (
+    args: string[],
+    context: PluginInvocationContext,
+  ): Promise<string | WebNodeRoot> => {
     if (!TodoPluginContext) {
       throw new Error('TodoPlugin not initialized');
     }
@@ -47,43 +56,28 @@ export const TodoPlugin: BotPlugin = {
 
     return handleTodo({
       args,
+      source: context.source,
+      prefix: context.prefix,
+      alias,
       db: TodoPluginDb,
       identity: TodoPlugin.identity,
-      runAgent: TodoPluginContext.runAgent,
+      runAgent: context.runAgent,
       helpText: TodoPlugin.helpText,
-      promptFn: TodoPluginContext.promptFn,
-      sendReply: TodoPluginContext.sendReply,
+      promptFn: context.promptFn ?? TodoPluginContext.promptFn,
+      sendReply: context.sendReply ?? TodoPluginContext.sendReply,
     });
   },
   onInit: (ctx: PluginContext) => {
     TodoPluginContext = ctx;
     TodoPluginDb = openDb();
   },
-  helpText: (alias: string) => [
-    `Todos: nested tasks with pairwise ranking (duel) and status (pending, in progress, done). Use !${alias} ai for natural-language drafts (accept/decline/revise); use !${alias} add, duel, current, next, list, done, and update for direct control.`,
+  helpText: (alias: string, prefix: string) => [
+    `Todos: nested tasks with pairwise ranking (duel) and status (pending, in progress, done). Use ${prefix}${alias} ai for natural-language drafts (accept/decline/revise); use ${prefix}${alias} add, duel, current, next, and update for direct control.`,
     '',
-    `!${alias} help — this message`,
-    `!${alias} ai <prompt>                  — create a todo draft from natural language`,
-    `!${alias} drafts [draft_id]            — list all drafts or show one in detail`,
-    `!${alias} accept <draft_id|all>        — confirm a draft and execute it`,
-    `!${alias} revise <draft_id> <text>     — note a revision on a pending draft`,
-    `!${alias} decline <draft_id>           — discard a draft`,
-    `!${alias} add <text>                   — add a top-level todo`,
-    `!${alias} add <text> under <parent_id> — add a sub-todo`,
-    `!${alias} move <id> [under <parent_id>] — reparent todo (omit under → top level)`,
-    `!${alias} focus <id|clear>             — set scope todo for list/duel/next (or clear)`,
-    `!${alias} unfocus                      — remove focus (same as focus clear)`,
-    `!${alias} duel [parent_id] [--reset]   — interactive ranking among children of parent (default: focus or root)`,
-    `!${alias} current [parent_id]          — first leaf in DFS order in scope (pending or in progress; former "next")`,
-    `!${alias} next [parent_id]             — next pending leaf after that first leaf in scope (default: focus or root)`,
-    `!${alias} list [<id>] [pending|done|all] — tree (default: focus subtree or all; id = subtree root)`,
-    `!${alias} list --flat                  — flat list`,
-    `!${alias} list --level <n>             — only depth n (0 = top-level); flat lines`,
-    `!${alias} list --desc                  — include descriptions in tree`,
-    `!${alias} show <id>                    — show todo detail`,
-    `!${alias} done <id>                    — mark done (cascades to children)`,
-    `!${alias} start <id>                   — set todo to in progress`,
-    `!${alias} update <id> <field> <value>  — update a field (todo, status, description)`,
-    `!${alias} delete <id>                  — delete todo and all descendants`,
+    `${prefix}${alias} help [subcommand]            — command help`,
+    ...getTodoHelpLines(prefix, alias),
   ],
+  aiDefinition,
+  commandDefinition,
+  stories: todoStories,
 };
