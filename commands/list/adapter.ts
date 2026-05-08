@@ -23,6 +23,24 @@ export function adaptListCommand(
   }
 
   if (result.type === 'empty') {
+    if (params.source === 'web') {
+      return renderListWeb(
+        createListRepresentation({
+          command: params.alias,
+          subcommand: 'list',
+          scope: result.scope,
+          view: result.view,
+          showDescriptions: result.showDescriptions,
+          listInvocation: {
+            arguments: { ...params.parsed.arguments },
+            options: { ...params.parsed.options },
+          },
+          items: [],
+        }),
+        { prefix: params.prefix },
+      );
+    }
+
     return result.message;
   }
 

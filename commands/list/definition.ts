@@ -25,6 +25,7 @@ export const listDefinition = (
       summary: `Filter by status: ${formatListStatusFilterChoices()}.`,
       flag: '--status',
       kind: 'string',
+      multiple: true,
       choices: [...LIST_STATUS_FILTER_CHOICES],
     },
     {
@@ -49,6 +50,7 @@ export const listDefinition = (
   examples: [
     `${prefix}${alias} list`,
     `${prefix}${alias} list --status in_progress`,
+    `${prefix}${alias} list --status pending --status done`,
     `${prefix}${alias} list 12 --status done --flat`,
   ],
   webWidget: {

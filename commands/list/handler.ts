@@ -11,6 +11,7 @@ import {
 } from './db';
 import {
   formatListStatusFilterChoices,
+  type ListStatusFilter,
   ListStatusFilterSchema,
 } from './status';
 
@@ -60,12 +61,77 @@ function parseOptionalBoolean(value: unknown): boolean {
   return value === true;
 }
 
-function parseOptionalFilter(value: unknown): string | null {
-  return typeof value === 'string' ? value.toLowerCase() : null;
+function parseOptionalFilters(value: unknown): string[] | null {
+  if (typeof value === 'string') {
+    return [value.toLowerCase()];
+  }
+
+  if (Array.isArray(value)) {
+    const filters = value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.toLowerCase());
+
+    return filters.length > 0 ? filters : null;
+  }
+
+  return null;
 }
 
 function getListUsage(prefix: string, alias: string): string {
   return `${prefix}${alias} list [<id>] [--status ${formatListStatusFilterChoices()}] [--flat] [--desc] [--level <n>]`;
+}
+
+function filterTodosWithTreeContext(
+  todos: TodoWithWinStats[],
+  statuses: Set<string>,
+): TodoWithWinStats[] {
+  const byId = new Map(todos.map((todo) => [todo.id, todo]));
+  const descendantsByParent = new Map<number, TodoWithWinStats[]>();
+  const included = new Set<number>();
+
+  for (const todo of todos) {
+    if (todo.parent_id === null) {
+      continue;
+    }
+
+    const siblings = descendantsByParent.get(todo.parent_id) ?? [];
+    siblings.push(todo);
+    descendantsByParent.set(todo.parent_id, siblings);
+  }
+
+  function includeAncestors(todo: TodoWithWinStats): void {
+    let parentId = todo.parent_id;
+
+    while (parentId !== null) {
+      const parent = byId.get(parentId);
+
+      if (!parent) {
+        return;
+      }
+
+      included.add(parent.id);
+      parentId = parent.parent_id;
+    }
+  }
+
+  function includeDescendants(todoId: number): void {
+    for (const child of descendantsByParent.get(todoId) ?? []) {
+      included.add(child.id);
+      includeDescendants(child.id);
+    }
+  }
+
+  for (const todo of todos) {
+    if (!statuses.has(todo.status)) {
+      continue;
+    }
+
+    included.add(todo.id);
+    includeAncestors(todo);
+    includeDescendants(todo.id);
+  }
+
+  return todos.filter((todo) => included.has(todo.id));
 }
 
 export type ListCommandResult =
@@ -76,6 +142,8 @@ export type ListCommandResult =
   | {
       type: 'empty';
       scope: { rootId: number; rootTitle: string } | null;
+      view: 'tree' | 'flat';
+      showDescriptions: boolean;
       message: string;
     }
   | {
@@ -105,15 +173,16 @@ export function handleListCommand(params: {
 }): ListCommandResult {
   const explicitRootId = parseOptionalInteger(params.arguments.rootId);
   const rootId = explicitRootId ?? getFocusId(params.db);
-  const filter = parseOptionalFilter(params.options.status);
+  const filters = parseOptionalFilters(params.options.status);
   const flat = parseOptionalBoolean(params.options.flat);
   const showDescriptions = parseOptionalBoolean(params.options.desc);
   const level = parseOptionalInteger(params.options.level);
 
-  const parsedFilter =
-    filter === null ? null : ListStatusFilterSchema.safeParse(filter);
+  const parsedFilters = filters?.map((filter) =>
+    ListStatusFilterSchema.safeParse(filter),
+  );
 
-  if (parsedFilter && !parsedFilter.success) {
+  if (parsedFilters?.some((filter) => !filter.success)) {
     return {
       type: 'error',
       message: `Usage: ${getListUsage(params.prefix, params.alias)}`,
@@ -147,10 +216,15 @@ export function handleListCommand(params: {
       ? listTodos(params.db)
       : listTodosInSubtree(params.db, rootId);
 
-  if (!parsedFilter) {
+  const statusFilters = parsedFilters?.map((filter) => filter.data) as
+    | ListStatusFilter[]
+    | undefined;
+
+  if (!statusFilters) {
     todos = todos.filter(isActiveListTodo);
-  } else if (parsedFilter.data !== 'all') {
-    todos = todos.filter((todo) => todo.status === parsedFilter.data);
+  } else if (!statusFilters.includes('all')) {
+    const allowedStatuses = new Set(statusFilters);
+    todos = filterTodosWithTreeContext(todos, allowedStatuses);
   }
 
   if (level !== null) {
@@ -163,6 +237,8 @@ export function handleListCommand(params: {
     return {
       type: 'empty',
       scope,
+      view: flat || level !== null ? 'flat' : 'tree',
+      showDescriptions,
       message: 'No todos matching filter.',
     };
   }

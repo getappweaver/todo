@@ -9,6 +9,10 @@ type WebRefreshPayload = {
   subcommand: string;
   arguments: Record<string, unknown>;
   options: Record<string, unknown>;
+  highlightTargetIds?: string[];
+  highlightTargetIdFromOutput?: { pattern: string; template: string };
+  expandTreeItemIds?: string[];
+  expandTreeItemIdFromOption?: { option: string; template: string };
 };
 
 type BuildFocusedScopeWebNodeProps = {
@@ -26,6 +30,24 @@ type TodoTreeNode = {
   children: TodoTreeNode[];
 };
 
+type TodoListFilterStatus = 'pending' | 'in_progress' | 'done';
+
+const TODO_LIST_FILTER_STATUSES: Array<{
+  status: TodoListFilterStatus;
+  label: string;
+}> = [
+  { status: 'pending', label: 'Pending' },
+  { status: 'in_progress', label: 'In Progress' },
+  { status: 'done', label: 'Done' },
+];
+
+const DEFAULT_TODO_LIST_FILTER_STATUSES: TodoListFilterStatus[] = [
+  'pending',
+  'in_progress',
+];
+
+const STATUS_FILTER_REVEAL_ID = 'todo-list-status-filter';
+
 const todoListStylesheet = {
   id: 'todo-list-web',
   cssText: `
@@ -39,6 +61,9 @@ const todoListStylesheet = {
       gap: 0.35rem;
     }
 
+    .web-row.todo-item-row .web-text.todo-item-title {
+      margin-top: 0.1rem;
+    }
     .web-row.todo-item-row:hover .web-text.todo-item-title {
       font-weight: 600;
     }
@@ -103,6 +128,22 @@ const todoListStylesheet = {
     .web-button.todo-new-root-button:focus-visible {
       background: var(--color-warning);
     }
+
+    .web-form.todo-ai-prompt-form.web-form--stacked {
+      gap: 0.35rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .web-stack.todo-status-filter-panel {
+      padding: 0.65rem;
+      border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+      background: color-mix(in srgb, var(--color-surface-alt) 94%, var(--color-warning) 6%);
+    }
+
+    .web-row.todo-status-filter-option {
+      justify-content: flex-start;
+      gap: 0.45rem;
+    }
   `,
 } as const;
 
@@ -115,8 +156,200 @@ function listRefresh(representation: ListRepresentation): WebRefreshPayload {
   };
 }
 
+function rowHighlightTargetId(itemId: number): string {
+  return `todo-row-${itemId}`;
+}
+
+function listRefreshHighlightingCreatedTodo(
+  representation: ListRepresentation,
+  underParentId: number | null,
+): WebRefreshPayload {
+  return {
+    ...listRefresh(representation),
+    highlightTargetIdFromOutput: {
+      pattern: 'Todo created: #(\\d+)',
+      template: 'todo-row-$1',
+    },
+    ...(underParentId === null
+      ? {}
+      : { expandTreeItemIds: [`todo-tree-item-${underParentId}`] }),
+  };
+}
+
+function listRefreshHighlightingTodo(
+  representation: ListRepresentation,
+  itemId: number,
+): WebRefreshPayload {
+  return {
+    ...listRefresh(representation),
+    highlightTargetIds: [rowHighlightTargetId(itemId)],
+  };
+}
+
+function listRefreshHighlightingMovedTodo(
+  representation: ListRepresentation,
+  itemId: number,
+): WebRefreshPayload {
+  return {
+    ...listRefreshHighlightingTodo(representation, itemId),
+    expandTreeItemIdFromOption: {
+      option: 'under',
+      template: 'todo-tree-item-$1',
+    },
+  };
+}
+
+function normalizeStatusFilters(value: unknown): TodoListFilterStatus[] {
+  const rawValues = Array.isArray(value)
+    ? value
+    : value === undefined
+      ? []
+      : [value];
+
+  const selected = new Set<TodoListFilterStatus>();
+
+  for (const raw of rawValues) {
+    if (raw === 'all') {
+      return TODO_LIST_FILTER_STATUSES.map((entry) => entry.status);
+    }
+
+    if (raw === 'pending' || raw === 'in_progress' || raw === 'done') {
+      selected.add(raw);
+    }
+  }
+
+  return selected.size > 0
+    ? TODO_LIST_FILTER_STATUSES.map((entry) => entry.status).filter((status) =>
+        selected.has(status),
+      )
+    : [...DEFAULT_TODO_LIST_FILTER_STATUSES];
+}
+
+function isDefaultStatusFilter(statuses: TodoListFilterStatus[]): boolean {
+  return (
+    statuses.length === DEFAULT_TODO_LIST_FILTER_STATUSES.length &&
+    DEFAULT_TODO_LIST_FILTER_STATUSES.every((status) =>
+      statuses.includes(status),
+    )
+  );
+}
+
+function hasExplicitStatusFilter(representation: ListRepresentation): boolean {
+  return representation.data.listInvocation.options.status !== undefined;
+}
+
+function statusFilterListAction(
+  representation: ListRepresentation,
+  statuses: TodoListFilterStatus[],
+): WebAction {
+  const options = { ...representation.data.listInvocation.options };
+
+  if (isDefaultStatusFilter(statuses)) {
+    delete options.status;
+  } else {
+    options.status = statuses;
+  }
+
+  return {
+    type: 'command',
+    command: representation.meta.command,
+    subcommand: 'list',
+    arguments: { ...representation.data.listInvocation.arguments },
+    options,
+    recordInTimeline: false,
+  };
+}
+
+function toggleStatusFilterAction(
+  representation: ListRepresentation,
+  status: TodoListFilterStatus,
+): WebAction {
+  const selected = normalizeStatusFilters(
+    representation.data.listInvocation.options.status,
+  );
+
+  const next = selected.includes(status)
+    ? selected.filter((item) => item !== status)
+    : [...selected, status];
+
+  return statusFilterListAction(representation, next);
+}
+
+function buildStatusFilterPanel(
+  representation: ListRepresentation,
+  hiddenUntilRevealed: boolean,
+): WebNode {
+  const selected = normalizeStatusFilters(
+    representation.data.listInvocation.options.status,
+  );
+
+  return {
+    type: 'element',
+    tag: 'stack',
+    props: {
+      className: 'todo-status-filter-panel',
+      gap: 'sm',
+      revealId: STATUS_FILTER_REVEAL_ID,
+      ...(hiddenUntilRevealed ? { hiddenUntilRevealed: true } : {}),
+    },
+    children: [
+      {
+        type: 'element',
+        tag: 'text',
+        props: { weight: 'bold' },
+        children: [{ type: 'text', value: 'Show Items' }],
+      },
+      ...TODO_LIST_FILTER_STATUSES.map(({ status, label }): WebNode => {
+        const checked = selected.includes(status);
+        const disabled = checked && selected.length === 1;
+
+        return {
+          type: 'element',
+          tag: 'row',
+          props: { className: 'todo-status-filter-option' },
+          children: [
+            {
+              type: 'element',
+              tag: 'checkbox',
+              props: {
+                checked,
+                disabled,
+                action: disabled
+                  ? undefined
+                  : toggleStatusFilterAction(representation, status),
+              },
+            },
+            {
+              type: 'element',
+              tag: 'text',
+              children: [{ type: 'text', value: label }],
+            },
+          ],
+        };
+      }),
+      {
+        type: 'element',
+        tag: 'button',
+        props: {
+          label: 'Close',
+          className: 'web-button--link',
+          action: hideInlineAddFormAction(STATUS_FILTER_REVEAL_ID),
+        },
+      },
+    ],
+  };
+}
+
 function inlineAddRevealId(itemId: number, kind: 'child' | 'sibling'): string {
   return `todo-inline-add-${kind}-${itemId}`;
+}
+
+function inlineUpdateRevealId(itemId: number): string {
+  return `todo-inline-update-${itemId}`;
+}
+
+function inlineMoveRevealId(itemId: number): string {
+  return `todo-inline-move-${itemId}`;
 }
 
 /** Generic `form` + `textField` + `button` (submit); `WebAction` is merged with FormData on the client. */
@@ -129,7 +362,8 @@ function buildListAiCommandForm(representation: ListRepresentation): WebNode {
     type: 'element',
     tag: 'form',
     props: {
-      className: 'web-form web-form--stacked web-form--ai-prompt',
+      className:
+        'web-form web-form--stacked web-form--ai-prompt todo-ai-prompt-form',
       action: {
         type: 'command',
         command,
@@ -201,12 +435,84 @@ function hideInlineAddFormAction(targetId: string): WebAction {
   };
 }
 
+function toggleRevealAction(targetId: string): WebAction {
+  return {
+    type: 'toggleReveal',
+    targetId,
+  };
+}
+
 type BuildInlineTodoAddFormProps = {
   representation: ListRepresentation;
   revealId: string;
   underParentId: number | null;
   placeholder: string;
 };
+
+type BuildInlineTodoUpdateFormProps = {
+  representation: ListRepresentation;
+  item: ListItem;
+};
+
+type MoveDestinationChoices = {
+  choices: string[];
+  choiceLabels: Record<string, string>;
+};
+
+function descendantIdsForItem(
+  representation: ListRepresentation,
+  item: ListItem,
+): Set<number> {
+  const descendants = new Set<number>();
+  const childrenByParentId = new Map<number, ListItem[]>();
+
+  for (const row of representation.data.items) {
+    if (row.parentId === null) {
+      continue;
+    }
+
+    const children = childrenByParentId.get(row.parentId) ?? [];
+    children.push(row);
+    childrenByParentId.set(row.parentId, children);
+  }
+
+  const stack = [...(childrenByParentId.get(item.id) ?? [])];
+  while (stack.length > 0) {
+    const next = stack.pop();
+
+    if (next === undefined || descendants.has(next.id)) {
+      continue;
+    }
+
+    descendants.add(next.id);
+    stack.push(...(childrenByParentId.get(next.id) ?? []));
+  }
+
+  return descendants;
+}
+
+function moveDestinationChoices(
+  representation: ListRepresentation,
+  item: ListItem,
+): MoveDestinationChoices {
+  const descendants = descendantIdsForItem(representation, item);
+  const choices = [''];
+  const choiceLabels: Record<string, string> = { '': 'Top level' };
+
+  for (const row of representation.data.items) {
+    if (row.id === item.id || descendants.has(row.id)) {
+      continue;
+    }
+
+    const value = String(row.id);
+    choices.push(value);
+
+    choiceLabels[value] =
+      `${'--'.repeat(row.depth)}${row.depth > 0 ? ' ' : ''}#${row.id} ${row.text}`;
+  }
+
+  return { choices, choiceLabels };
+}
 
 /** Inline widget form for `/… add`; `underParentId` is `--under` (omit when `null`, e.g. root sibling). */
 function buildInlineTodoAddForm({
@@ -215,7 +521,11 @@ function buildInlineTodoAddForm({
   underParentId,
   placeholder,
 }: BuildInlineTodoAddFormProps): WebNode {
-  const refresh = listRefresh(representation);
+  const refresh = listRefreshHighlightingCreatedTodo(
+    representation,
+    underParentId,
+  );
+
   const command = representation.meta.command;
 
   return {
@@ -289,8 +599,148 @@ function buildInlineTodoAddForm({
   };
 }
 
+function buildInlineTodoUpdateForm({
+  representation,
+  item,
+}: BuildInlineTodoUpdateFormProps): WebNode {
+  const revealId = inlineUpdateRevealId(item.id);
+
+  return {
+    type: 'element',
+    tag: 'form',
+    props: {
+      className: 'web-form web-form--stacked todo-inline-add-form',
+      revealId,
+      hiddenUntilRevealed: true,
+      action: {
+        type: 'command',
+        command: representation.meta.command,
+        subcommand: 'update',
+        arguments: { id: item.id, field: 'todo', value: '' },
+        options: {},
+        recordInTimeline: false,
+        refresh: listRefreshHighlightingTodo(representation, item.id),
+      },
+    },
+    children: [
+      {
+        type: 'element',
+        tag: 'text',
+        props: { tone: 'muted', size: 'sm' },
+        children: [{ type: 'text', value: `Update #${item.id}` }],
+      },
+      {
+        type: 'element',
+        tag: 'textField',
+        props: {
+          formFieldName: 'value',
+          inputPlaceholder: 'Todo title',
+          value: item.text,
+          autoFocus: true,
+        },
+      },
+      {
+        type: 'element',
+        tag: 'row',
+        props: { className: 'web-form__actions', gap: 'sm' },
+        children: [
+          {
+            type: 'element',
+            tag: 'button',
+            props: {
+              label: 'Update',
+              htmlType: 'submit',
+            },
+          },
+          {
+            type: 'element',
+            tag: 'button',
+            props: {
+              label: 'Close',
+              className: 'web-button',
+              action: hideInlineAddFormAction(revealId),
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildInlineTodoMoveForm(
+  representation: ListRepresentation,
+  item: ListItem,
+): WebNode {
+  const revealId = inlineMoveRevealId(item.id);
+  const destinations = moveDestinationChoices(representation, item);
+
+  return {
+    type: 'element',
+    tag: 'form',
+    props: {
+      className: 'web-form web-form--stacked todo-inline-add-form',
+      revealId,
+      hiddenUntilRevealed: true,
+      formOptionFieldNames: ['under'],
+      action: {
+        type: 'command',
+        command: representation.meta.command,
+        subcommand: 'move',
+        arguments: { id: item.id },
+        options: {},
+        recordInTimeline: false,
+        refresh: listRefreshHighlightingMovedTodo(representation, item.id),
+      },
+    },
+    children: [
+      {
+        type: 'element',
+        tag: 'text',
+        props: { tone: 'muted', size: 'sm' },
+        children: [{ type: 'text', value: `Move #${item.id} under:` }],
+      },
+      {
+        type: 'element',
+        tag: 'select',
+        props: {
+          formFieldName: 'under',
+          choices: destinations.choices,
+          choiceLabels: destinations.choiceLabels,
+          value: item.parentId === null ? '' : String(item.parentId),
+          autoFocus: true,
+        },
+      },
+      {
+        type: 'element',
+        tag: 'row',
+        props: { className: 'web-form__actions', gap: 'sm' },
+        children: [
+          {
+            type: 'element',
+            tag: 'button',
+            props: {
+              label: 'Move',
+              htmlType: 'submit',
+            },
+          },
+          {
+            type: 'element',
+            tag: 'button',
+            props: {
+              label: 'Close',
+              className: 'web-button',
+              action: hideInlineAddFormAction(revealId),
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function buildEmptyTodoListPrompt(representation: ListRepresentation): WebNode {
   const revealId = 'todo-inline-add-root-empty';
+  const filtered = hasExplicitStatusFilter(representation);
 
   return {
     type: 'element',
@@ -301,24 +751,33 @@ function buildEmptyTodoListPrompt(representation: ListRepresentation): WebNode {
         type: 'element',
         tag: 'text',
         props: { tone: 'muted' },
-        children: [{ type: 'text', value: 'No todos yet.' }],
+        children: [
+          {
+            type: 'text',
+            value: filtered ? 'No todos matching filter.' : 'No todos yet.',
+          },
+        ],
       },
-      {
-        type: 'element',
-        tag: 'button',
-        props: {
-          label: 'Add a new root item',
-          className: 'todo-new-root-button',
-          storyTargetId: 'todo-new-root',
-          action: revealInlineAddFormAction(revealId),
-        },
-      },
-      buildInlineTodoAddForm({
-        representation,
-        revealId,
-        underParentId: null,
-        placeholder: 'New todo',
-      }),
+      ...(filtered
+        ? []
+        : [
+            {
+              type: 'element' as const,
+              tag: 'button' as const,
+              props: {
+                label: 'Add a new root item',
+                className: 'todo-new-root-button',
+                storyTargetId: 'todo-new-root',
+                action: revealInlineAddFormAction(revealId),
+              },
+            },
+            buildInlineTodoAddForm({
+              representation,
+              revealId,
+              underParentId: null,
+              placeholder: 'New todo',
+            }),
+          ]),
     ],
   };
 }
@@ -429,7 +888,10 @@ function deleteTodoAction(
     subcommand: 'delete',
     arguments: { id: item.id },
     options: {},
-    refresh: listRefresh(representation),
+    refresh:
+      item.parentId === null
+        ? listRefresh(representation)
+        : listRefreshHighlightingTodo(representation, item.parentId),
   };
 }
 
@@ -462,13 +924,90 @@ function duelTodoAction(
   };
 }
 
-function renderTodoItemRow(
+function renderTodoRowActionsMenu(
   representation: ListRepresentation,
   item: ListItem,
 ): WebNode {
   const addChildRevealId = inlineAddRevealId(item.id, 'child');
   const addSiblingRevealId = inlineAddRevealId(item.id, 'sibling');
 
+  return {
+    type: 'element',
+    tag: 'overflowMenu',
+    props: {
+      label: '\u22EE',
+      buttonVariant: 'icon',
+      storyTargetId: `todo-row-actions-${item.id}`,
+    },
+    children: [
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: 'Add child…',
+          storyTargetId: `todo-add-child-${item.id}`,
+          action: revealInlineAddFormAction(addChildRevealId),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: 'Add sibling…',
+          storyTargetId: `todo-add-sibling-${item.id}`,
+          action: revealInlineAddFormAction(addSiblingRevealId),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: 'Focus on',
+          action: focusTodoAction(representation, item),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: 'Duel',
+          storyTargetId: `todo-duel-${item.id}`,
+          action: duelTodoAction(representation, item),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: 'Update…',
+          action: revealInlineAddFormAction(inlineUpdateRevealId(item.id)),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: 'Move…',
+          action: revealInlineAddFormAction(inlineMoveRevealId(item.id)),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: 'Delete',
+          tone: 'danger',
+          action: deleteTodoAction(representation, item),
+        },
+      },
+    ],
+  };
+}
+
+function renderTodoItemRow(
+  representation: ListRepresentation,
+  item: ListItem,
+): WebNode {
   const mainChildren: WebNode[] = [
     {
       type: 'element',
@@ -587,61 +1126,7 @@ function renderTodoItemRow(
         props: { className: 'todo-item-content' },
         children: mainChildren,
       },
-      {
-        type: 'element',
-        tag: 'overflowMenu',
-        props: {
-          label: '\u22EE',
-          buttonVariant: 'icon',
-          storyTargetId: `todo-row-actions-${item.id}`,
-        },
-        children: [
-          {
-            type: 'element',
-            tag: 'menuItem',
-            props: {
-              label: 'Add child…',
-              storyTargetId: `todo-add-child-${item.id}`,
-              action: revealInlineAddFormAction(addChildRevealId),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'menuItem',
-            props: {
-              label: 'Add sibling…',
-              storyTargetId: `todo-add-sibling-${item.id}`,
-              action: revealInlineAddFormAction(addSiblingRevealId),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'menuItem',
-            props: {
-              label: 'Focus on',
-              action: focusTodoAction(representation, item),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'menuItem',
-            props: {
-              label: 'Duel',
-              storyTargetId: `todo-duel-${item.id}`,
-              action: duelTodoAction(representation, item),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'menuItem',
-            props: {
-              label: 'Delete',
-              tone: 'danger',
-              action: deleteTodoAction(representation, item),
-            },
-          },
-        ],
-      },
+      renderTodoRowActionsMenu(representation, item),
     ],
   };
 }
@@ -700,7 +1185,7 @@ function renderTreeItem(
       filterText,
       filterName: item.text,
       filterPath: `${item.id}`,
-      defaultExpanded: true,
+      defaultExpanded: false,
     },
     summary: {
       type: 'element',
@@ -722,6 +1207,8 @@ function renderTreeItem(
           underParentId: item.parentId,
           placeholder: 'New sibling todo',
         }),
+        buildInlineTodoUpdateForm({ representation, item }),
+        buildInlineTodoMoveForm(representation, item),
       ],
     },
     children: [
@@ -769,6 +1256,8 @@ function renderFlatTodoItem(
         underParentId: item.parentId,
         placeholder: 'New sibling todo',
       }),
+      buildInlineTodoUpdateForm({ representation, item }),
+      buildInlineTodoMoveForm(representation, item),
     ],
   };
 }
@@ -788,6 +1277,14 @@ export function renderListWeb(
     );
   }
 
+  treeChildren.push(
+    buildStatusFilterPanel(
+      representation,
+      representation.data.view === 'tree' &&
+        representation.data.items.length > 0,
+    ),
+  );
+
   if (representation.data.view === 'tree') {
     const tree = buildItemTree(representation.data.items).nodes;
 
@@ -803,6 +1300,13 @@ export function renderListWeb(
           filterable: true,
           filterIndexKey: `todo-tree:${representation.data.scope?.rootId ?? 'root'}:${representation.data.items.length}`,
           filterPlaceholder: 'Filter todos',
+          toolbarActions: [
+            {
+              label: 'Show items',
+              icon: 'checklist',
+              action: toggleRevealAction(STATUS_FILTER_REVEAL_ID),
+            },
+          ],
         },
         children: tree.map((node) => renderTreeItem(representation, node)),
       });

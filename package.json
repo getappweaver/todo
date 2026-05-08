@@ -1,6 +1,6 @@
 {
   "name": "dm-bot-todo-plugin",
-  "version": "4.1.1",
+  "version": "4.2.0",
   "dmBot": {
     "coreApiVersion": "^9.0.0",
     "description": "Todo management plugin for dm-bot"
