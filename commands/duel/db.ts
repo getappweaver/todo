@@ -107,8 +107,22 @@ export function getRankedSiblings(
         t.created_at,
         t.updated_at,
         t.completed_at,
-        (SELECT COUNT(*) FROM todo_comparisons w WHERE w.winner_id = t.id) AS wins,
-        (SELECT COUNT(*) FROM todo_comparisons l WHERE l.loser_id = t.id) AS losses
+        (
+          SELECT COUNT(*)
+          FROM todo_comparisons w
+          JOIN todos peer ON peer.id = w.loser_id
+          WHERE w.winner_id = t.id
+            AND peer.parent_id IS t.parent_id
+            AND peer.status NOT IN ('done', 'cancelled')
+        ) AS wins,
+        (
+          SELECT COUNT(*)
+          FROM todo_comparisons l
+          JOIN todos peer ON peer.id = l.winner_id
+          WHERE l.loser_id = t.id
+            AND peer.parent_id IS t.parent_id
+            AND peer.status NOT IN ('done', 'cancelled')
+        ) AS losses
       FROM todos t
       WHERE ${clause}
         AND t.status NOT IN ('done', 'cancelled')`,
@@ -182,9 +196,11 @@ export function getNextPair(
       scored AS (
         SELECT winner_id AS id FROM todo_comparisons
           WHERE winner_id IN (SELECT id FROM siblings)
+            AND loser_id IN (SELECT id FROM siblings)
         UNION
         SELECT loser_id AS id FROM todo_comparisons
           WHERE loser_id IN (SELECT id FROM siblings)
+            AND winner_id IN (SELECT id FROM siblings)
       )
       SELECT
         s1.id    AS aId,
@@ -294,8 +310,8 @@ export function resetComparisons(db: Database, parentId: number | null): void {
 
   db.run(
     `DELETE FROM todo_comparisons
-     WHERE winner_id IN (${placeholders})
-        OR loser_id IN (${placeholders})`,
+      WHERE winner_id IN (${placeholders})
+        AND loser_id IN (${placeholders})`,
     [...ids, ...ids],
   );
 }

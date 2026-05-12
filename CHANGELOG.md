@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.0.0] - 2026-05-12
+
+- feat: improve todo duel web flow (dfbbc09)
+
 ## [v4.2.0] - 2026-05-08
 
-- feat: add interactive todo list filtering (208866c)
+- feat: add interactive todo list filtering (04306d3)
 
 ## [v4.1.1] - 2026-05-03
 

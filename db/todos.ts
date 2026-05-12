@@ -76,8 +76,22 @@ function listTodosDepthFirstWinOrdered(db: Database): TodoWithWinStats[] {
         t.created_at,
         t.updated_at,
         t.completed_at,
-        (SELECT COUNT(*) FROM todo_comparisons w WHERE w.winner_id = t.id) AS wins,
-        (SELECT COUNT(*) FROM todo_comparisons l WHERE l.loser_id = t.id) AS losses
+        (
+          SELECT COUNT(*)
+          FROM todo_comparisons w
+          JOIN todos peer ON peer.id = w.loser_id
+          WHERE w.winner_id = t.id
+            AND peer.parent_id IS t.parent_id
+            AND peer.status NOT IN ('done', 'cancelled')
+        ) AS wins,
+        (
+          SELECT COUNT(*)
+          FROM todo_comparisons l
+          JOIN todos peer ON peer.id = l.winner_id
+          WHERE l.loser_id = t.id
+            AND peer.parent_id IS t.parent_id
+            AND peer.status NOT IN ('done', 'cancelled')
+        ) AS losses
       FROM todos t`,
     )
     .all() as Record<string, unknown>[];

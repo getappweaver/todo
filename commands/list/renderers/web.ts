@@ -32,6 +32,13 @@ type TodoTreeNode = {
 
 type TodoListFilterStatus = 'pending' | 'in_progress' | 'done';
 
+const TODO_TEXT_STATUS: Record<ListItem['status'], string> = {
+  pending: '[ ]',
+  in_progress: '[~]',
+  done: '[x]',
+  cancelled: '[-]',
+};
+
 const TODO_LIST_FILTER_STATUSES: Array<{
   status: TodoListFilterStatus;
   label: string;
@@ -816,14 +823,8 @@ export function buildFocusedScopeWebNode(
   };
 }
 
-function winRateLabel(item: ListItem): string | undefined {
-  if (item.winRate === null) {
-    return undefined;
-  }
-
-  const pct = Math.round(item.winRate * 100);
-
-  return `${pct}% · ${item.wins}W/${item.losses}L`;
+function scoreLabel(item: ListItem): string | undefined {
+  return item.winRate === null ? 'unscored' : undefined;
 }
 
 function setTodoPendingAction(
@@ -913,15 +914,80 @@ function duelTodoAction(
   representation: ListRepresentation,
   item: ListItem,
 ): WebAction {
+  const returnRoot = representation.data.scope?.rootId ?? 'root';
+
   return {
     type: 'command',
     command: representation.meta.command,
     subcommand: 'duel',
-    arguments: { parentId: item.id },
+    arguments: {
+      parentId: item.id,
+      duelArgs: ['web', 'choose', 'returnRoot', String(returnRoot)],
+    },
     options: {},
-    recordInTimeline: true,
-    refresh: listRefresh(representation),
+    recordInTimeline: false,
   };
+}
+
+function copyToClipboardAction(text: string): WebAction {
+  return {
+    type: 'clientAction',
+    action: 'clipboard.writeText',
+    payload: { text },
+  };
+}
+
+function todoItemVisibleSubtreeText(
+  representation: ListRepresentation,
+  item: ListItem,
+): string {
+  const startIndex = representation.data.items.findIndex(
+    (candidate) => candidate.id === item.id,
+  );
+
+  if (startIndex < 0) {
+    return `${TODO_TEXT_STATUS[item.status]} ${item.text} #${item.id}`;
+  }
+
+  const items = representation.data.items;
+  const baseDepth = items[startIndex].depth;
+  const lines: string[] = [];
+
+  for (let index = startIndex; index < items.length; index += 1) {
+    const current = items[index];
+
+    if (index > startIndex && current.depth <= baseDepth) {
+      break;
+    }
+
+    const relativeDepth = Math.max(0, current.depth - baseDepth);
+    const indent = '  '.repeat(relativeDepth);
+    const status = TODO_TEXT_STATUS[current.status] ?? '[ ]';
+
+    lines.push(`${indent}${status} ${current.text} #${current.id}`);
+  }
+
+  return lines.join('\n');
+}
+
+function visibleTodoBoardText(representation: ListRepresentation): string {
+  if (representation.data.items.length === 0) {
+    return '';
+  }
+
+  const baseDepth = Math.min(
+    ...representation.data.items.map((item) => item.depth),
+  );
+
+  return representation.data.items
+    .map((item) => {
+      const relativeDepth = Math.max(0, item.depth - baseDepth);
+      const indent = '  '.repeat(relativeDepth);
+      const status = TODO_TEXT_STATUS[item.status] ?? '[ ]';
+
+      return `${indent}${status} ${item.text} #${item.id}`;
+    })
+    .join('\n');
 }
 
 function renderTodoRowActionsMenu(
@@ -973,6 +1039,24 @@ function renderTodoRowActionsMenu(
           label: 'Duel',
           storyTargetId: `todo-duel-${item.id}`,
           action: duelTodoAction(representation, item),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: `Copy #${item.id}`,
+          action: copyToClipboardAction(`#${item.id}`),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: 'Copy as text',
+          action: copyToClipboardAction(
+            todoItemVisibleSubtreeText(representation, item),
+          ),
         },
       },
       {
@@ -1037,7 +1121,7 @@ function renderTodoItemRow(
           type: 'element',
           tag: 'badge',
           props: {
-            label: winRateLabel(item),
+            label: scoreLabel(item),
             tone: 'muted',
             size: 'sm',
           },
@@ -1305,6 +1389,13 @@ export function renderListWeb(
               label: 'Show items',
               icon: 'checklist',
               action: toggleRevealAction(STATUS_FILTER_REVEAL_ID),
+            },
+            {
+              label: 'Copy visible board',
+              icon: 'copy',
+              action: copyToClipboardAction(
+                visibleTodoBoardText(representation),
+              ),
             },
           ],
         },

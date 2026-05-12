@@ -14,18 +14,8 @@ const STATUS_ICON: Record<string, string> = {
   cancelled: '[-]',
 };
 
-function formatWinRate(todo: {
-  win_rate: number | null;
-  wins: number;
-  losses: number;
-}): string {
-  if (todo.win_rate === null) {
-    return 'unscored';
-  }
-
-  const pct = Math.round(todo.win_rate * 100);
-
-  return `${pct}%  ${todo.wins}W/${todo.losses}L`;
+function scoreText(item: ListItem): string {
+  return item.winRate === null ? ' (unscored)' : '';
 }
 
 export function formatListScopeTitleLine(params: { scope: ListScope }): string {
@@ -49,13 +39,7 @@ export function formatListScopeHeader(params: {
 function renderFlatListLine(item: ListItem): string {
   const icon = (STATUS_ICON[item.status] ?? '[ ]').padEnd(4);
 
-  const rate = formatWinRate({
-    win_rate: item.winRate,
-    wins: item.wins,
-    losses: item.losses,
-  });
-
-  return `${C.bold}#${item.id}${C.reset} ${icon} ${item.text} (${rate})`;
+  return `${C.bold}#${item.id}${C.reset} ${icon} ${item.text}${scoreText(item)}`;
 }
 
 function renderTree(
@@ -66,13 +50,9 @@ function renderTree(
     const prefix = '  '.repeat(item.depth + 1);
     const icon = STATUS_ICON[item.status] ?? '[ ]';
 
-    const rate = formatWinRate({
-      win_rate: item.winRate,
-      wins: item.wins,
-      losses: item.losses,
-    });
-
-    const out = [`${prefix}- ${icon} ${item.text} (${rate})  (id: ${item.id})`];
+    const out = [
+      `${prefix}- ${icon} ${item.text}${scoreText(item)} (id: ${item.id})`,
+    ];
 
     if (representation.data.showDescriptions && item.description?.trim()) {
       const descIndent = prefix + ' '.repeat('- '.length + icon.length + 1);

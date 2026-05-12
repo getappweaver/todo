@@ -2,9 +2,9 @@ import type {
   StoryChatState,
   StoryDefinition,
 } from '@src/system/story-definition';
+import type { WebAction, WebNodeRoot } from '@src/web/ui-schema';
 import { draftReviewPrompt } from '@src/web/widgets';
 
-import { createDuelPrompt } from './commands/duel/renderers/web';
 import { renderListWeb } from './commands/list/renderers/web';
 import { createListRepresentation } from './commands/list/representation/builder';
 import type { Todo } from './types/todos';
@@ -851,18 +851,154 @@ function buildAiPromptStory(params: {
   return story;
 }
 
-function duelPrompt(params: {
+function duelStoryAction(params: {
   alias: string;
-  text: string;
-  options: Array<{ label: string; value: string; tone?: 'success' | 'muted' }>;
-}) {
-  return createDuelPrompt({
-    source: 'web',
+  actionArgs: string[];
+}): WebAction {
+  return {
+    type: 'command',
     command: params.alias,
     subcommand: 'duel',
-    text: params.text,
-    options: params.options,
-  });
+    arguments: {
+      parentId: duelParentTodo.id,
+      duelArgs: ['web', ...params.actionArgs, 'returnRoot', 'root'],
+    },
+    options: {},
+    recordInTimeline: false,
+  };
+}
+
+function buildDuelQuestionStoryOutput(params: {
+  alias: string;
+  question: string;
+  a: Todo;
+  b: Todo;
+}): WebNodeRoot {
+  return {
+    kind: 'ui',
+    version: 1,
+    meta: {
+      command: params.alias,
+      subcommand: 'duel',
+      arguments: { parentId: duelParentTodo.id, duelArgs: ['web'] },
+    },
+    tree: {
+      type: 'element',
+      tag: 'box',
+      props: { padding: 'md', scrollIntoViewOnMount: true },
+      children: [
+        {
+          type: 'element',
+          tag: 'stack',
+          props: { gap: 'md' },
+          children: [
+            {
+              type: 'element',
+              tag: 'text',
+              props: { weight: 'bold' },
+              children: [{ type: 'text', value: params.question }],
+            },
+            ...[
+              {
+                label: 'A',
+                item: params.a,
+                other: params.b,
+                targetId: 'todo-duel-answer-A',
+              },
+              {
+                label: 'B',
+                item: params.b,
+                other: params.a,
+                targetId: 'todo-duel-answer-B',
+              },
+            ].map(({ label, item, other, targetId }) => ({
+              type: 'element' as const,
+              tag: 'row' as const,
+              props: { itemAlign: 'start', className: 'todo-duel-card-row' },
+              children: [
+                {
+                  type: 'element' as const,
+                  tag: 'button' as const,
+                  props: {
+                    label,
+                    storyTargetId: targetId,
+                    action: duelStoryAction({
+                      alias: params.alias,
+                      actionArgs: ['answer', String(item.id), String(other.id)],
+                    }),
+                  },
+                },
+                {
+                  type: 'element' as const,
+                  tag: 'text' as const,
+                  props: { weight: 'bold' as const },
+                  children: [{ type: 'text' as const, value: item.todo }],
+                },
+              ],
+            })),
+          ],
+        },
+      ],
+    },
+  };
+}
+
+function buildDuelCompleteStoryOutput(params: { alias: string }): WebNodeRoot {
+  return {
+    kind: 'ui',
+    version: 1,
+    meta: {
+      command: params.alias,
+      subcommand: 'duel',
+      arguments: { parentId: duelParentTodo.id, duelArgs: ['web'] },
+    },
+    tree: {
+      type: 'element',
+      tag: 'box',
+      props: { padding: 'md', scrollIntoViewOnMount: true },
+      children: [
+        {
+          type: 'element',
+          tag: 'stack',
+          props: { gap: 'md' },
+          children: [
+            {
+              type: 'element',
+              tag: 'text',
+              props: { weight: 'bold' },
+              children: [
+                { type: 'text', value: 'All items in this scope are scored.' },
+              ],
+            },
+            {
+              type: 'element',
+              tag: 'button',
+              props: {
+                label: 'Done',
+                storyTargetId: 'todo-duel-done',
+                action: duelStoryAction({
+                  alias: params.alias,
+                  actionArgs: ['quit'],
+                }),
+              },
+            },
+            {
+              type: 'element',
+              tag: 'button',
+              props: {
+                label: 'Reset and re-duel',
+                className: 'todo-duel-danger-button',
+                action: duelStoryAction({
+                  alias: params.alias,
+                  actionArgs: ['reset'],
+                }),
+              },
+            },
+          ],
+        },
+      ],
+    },
+  };
 }
 
 function buildDuelStory(params: {
@@ -873,9 +1009,9 @@ function buildDuelStory(params: {
     id: 'todo-duel-prioritize',
     title: 'Prioritize todos with duel',
     description:
-      'Use the Todo duel prompt to rank sibling tasks through interactive pairwise choices.',
+      'Use the Todo duel widget to rank sibling tasks through interactive pairwise choices.',
     showcase: {
-      title: 'Interactive prompts can guide app workflows',
+      title: 'Interactive widgets can guide app workflows',
       description:
         'Duel asks simple A/B questions, records comparisons, and turns a flat task list into a ranked priority order.',
       timing: {
@@ -907,51 +1043,39 @@ function buildDuelStory(params: {
             items: duelRankedItems,
           }).web,
         ],
-        [`${params.alias}:duel`]: ['Duel session finished.'],
-      },
-      __prompts: {
         [`${params.alias}:duel`]: [
-          duelPrompt({
+          buildDuelQuestionStoryOutput({
             alias: params.alias,
-            text: `Which is more important?\nA) ${duelTodoA.todo}\nB) ${duelTodoB.todo}`,
-            options: [
-              { label: 'A', value: 'A' },
-              { label: 'B', value: 'B' },
-              { label: 'Skip', value: 'S', tone: 'muted' },
-            ],
+            question: 'Question 1 of 3: which is more important?',
+            a: duelTodoA,
+            b: duelTodoB,
           }),
-          duelPrompt({
+          buildDuelQuestionStoryOutput({
             alias: params.alias,
-            text: `Which is more important?\nA) ${duelTodoA.todo}\nB) ${duelTodoC.todo}`,
-            options: [
-              { label: 'A', value: 'A' },
-              { label: 'B', value: 'B' },
-              { label: 'Skip', value: 'S', tone: 'muted' },
-            ],
+            question: 'Question 2 of 3: which is more important?',
+            a: duelTodoA,
+            b: duelTodoC,
           }),
-          duelPrompt({
+          buildDuelQuestionStoryOutput({
             alias: params.alias,
-            text: `Which is more important?\nA) ${duelTodoB.todo}\nB) ${duelTodoC.todo}`,
-            options: [
-              { label: 'A', value: 'A' },
-              { label: 'B', value: 'B' },
-              { label: 'Skip', value: 'S', tone: 'muted' },
-            ],
+            question: 'Question 3 of 3: which is more important?',
+            a: duelTodoB,
+            b: duelTodoC,
           }),
-          duelPrompt({
+          buildDuelCompleteStoryOutput({
             alias: params.alias,
-            text: `✓ All items scored!\n\n1. ${duelTodoA.todo} (2/2)\n2. ${duelTodoB.todo} (1/2)\n3. ${duelTodoC.todo} (0/2)\n\nContinue with a re-duel? (yes/no)`,
-            options: [
-              { label: 'Yes', value: 'yes', tone: 'success' },
-              { label: 'No', value: 'no', tone: 'muted' },
-            ],
           }),
+          buildTodoListStoryCommandOutput({
+            prefix: params.prefix,
+            alias: params.alias,
+            items: duelRankedItems,
+          }).web,
         ],
       },
       __transitions: [
         {
           on: { command: params.alias, subcommand: 'duel' },
-          advanceOutput: { command: params.alias, subcommand: 'list' },
+          advanceOutput: { command: params.alias, subcommand: 'duel' },
         },
       ],
     },
@@ -1030,9 +1154,9 @@ function buildDuelStory(params: {
         type: 'instruction',
         text: 'Click Duel to start pairwise ranking for the child tasks.',
         showcase: {
-          title: 'Commands can pause for structured user input',
+          title: 'Commands can update in place for structured input',
           description:
-            'The command stays active while each prompt answer drives the next comparison.',
+            'The widget replaces itself after each A/B choice so the ranking flow stays in one card.',
         },
       },
       {
@@ -1060,11 +1184,11 @@ function buildDuelStory(params: {
       },
       {
         type: 'focus_target',
-        target: { type: 'web_node', targetId: 'prompt-answer-A' },
+        target: { type: 'web_node', targetId: 'todo-duel-answer-A' },
       },
       {
         type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'prompt-answer-A' },
+        match: { type: 'target_clicked', targetId: 'todo-duel-answer-A' },
       },
       {
         type: 'instruction',
@@ -1072,11 +1196,11 @@ function buildDuelStory(params: {
       },
       {
         type: 'focus_target',
-        target: { type: 'web_node', targetId: 'prompt-answer-A' },
+        target: { type: 'web_node', targetId: 'todo-duel-answer-A' },
       },
       {
         type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'prompt-answer-A' },
+        match: { type: 'target_clicked', targetId: 'todo-duel-answer-A' },
       },
       {
         type: 'instruction',
@@ -1084,28 +1208,28 @@ function buildDuelStory(params: {
       },
       {
         type: 'focus_target',
-        target: { type: 'web_node', targetId: 'prompt-answer-A' },
+        target: { type: 'web_node', targetId: 'todo-duel-answer-A' },
       },
       {
         type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'prompt-answer-A' },
+        match: { type: 'target_clicked', targetId: 'todo-duel-answer-A' },
       },
       {
         type: 'instruction',
-        text: 'Click No to finish without re-dueling.',
+        text: 'Click Done to return to the ranked todo list.',
         showcase: {
-          title: 'The prompt session returns to the command result',
+          title: 'Duel returns to the regular list',
           description:
-            'When the ranking is complete, the command finishes and the list refreshes.',
+            'When the ranking is complete, Done closes the duel view and shows the updated order.',
         },
       },
       {
         type: 'focus_target',
-        target: { type: 'web_node', targetId: 'prompt-answer-no' },
+        target: { type: 'web_node', targetId: 'todo-duel-done' },
       },
       {
         type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'prompt-answer-no' },
+        match: { type: 'target_clicked', targetId: 'todo-duel-done' },
       },
       {
         type: 'wait_for_action',
@@ -1113,14 +1237,6 @@ function buildDuelStory(params: {
           type: 'command_completed',
           command: params.alias,
           subcommand: 'duel',
-        },
-      },
-      {
-        type: 'wait_for_action',
-        match: {
-          type: 'command_completed',
-          command: params.alias,
-          subcommand: 'list',
         },
       },
       {

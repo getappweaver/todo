@@ -13,6 +13,12 @@ export const duelDefinition = (
       summary: 'Optional scope root todo ID.',
       kind: 'integer',
     },
+    {
+      name: 'duelArgs',
+      summary: 'Internal web duel action tokens.',
+      kind: 'string',
+      variadic: true,
+    },
   ],
   options: [
     {

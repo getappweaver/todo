@@ -1,4 +1,3 @@
-import { formatWinRate } from '../../commands/duel/db';
 import type { Todo, TodoStatus, TodoWithWinStats } from '../../types/todos';
 
 const BULLET = '- ';
@@ -44,19 +43,7 @@ function buildChildMap(todos: Todo[]): Map<number | null, Todo[]> {
 function winLine(todo: Todo): string {
   const withStats = todo as TodoWithWinStats;
 
-  if (
-    withStats.win_rate === undefined &&
-    withStats.wins === undefined &&
-    withStats.losses === undefined
-  ) {
-    return '';
-  }
-
-  return ` (${formatWinRate({
-    win_rate: withStats.win_rate ?? null,
-    wins: withStats.wins ?? 0,
-    losses: withStats.losses ?? 0,
-  })})`;
+  return withStats.win_rate === null ? ' (unscored)' : '';
 }
 
 export function formatTodoSubtreeListHeader(
@@ -103,7 +90,7 @@ export function formatTodoTree(
       const runIn = `${BULLET}${icon} `;
 
       lines.push(
-        `${prefix}${runIn}${todo.todo}${winLine(todo)}  (id: ${todo.id})`,
+        `${prefix}${runIn}${todo.todo}${winLine(todo)} (id: ${todo.id})`,
       );
 
       if (showDescriptions && todo.description?.trim()) {

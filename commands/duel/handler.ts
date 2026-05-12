@@ -3,6 +3,7 @@ import type { Database } from 'bun:sqlite';
 import type { PromptFn } from '@src/core/plugin';
 import type { MessageSource } from '@src/messaging';
 import { PROMPT_SESSION_EXIT } from '@src/prompt-session';
+import type { WebNodeRoot } from '@src/web/ui-schema';
 
 import { getTodoPathFromScopeToLeaf } from '../../db/todos';
 
@@ -29,6 +30,7 @@ import type {
   RankedTodo,
   SendReplyFn,
 } from './representation';
+import { handleDuelWebAction } from './web';
 
 function promptPayload(params: {
   source: MessageSource;
@@ -250,15 +252,31 @@ async function maybePromptDuelForUnscored(props: {
 
 export async function handleDuelCommand(props: {
   args: string[];
+  webArgs: string[];
   db: Database;
+  alias: string;
   source: MessageSource;
   sendReply: SendReplyFn;
   promptFn: PromptFn;
-}): Promise<string> {
-  const { args, db, source, sendReply, promptFn } = props;
+}): Promise<string | WebNodeRoot> {
+  const { args, webArgs, db, alias, source, sendReply, promptFn } = props;
   const reset = args.includes('--reset');
   const cleanArgs = args.filter((arg) => arg !== '--reset');
   const parentId = getParentId(cleanArgs, db);
+
+  if (webArgs.length > 0 && (source !== 'web' || webArgs[0] !== 'web')) {
+    return 'Usage: todo duel [parentId] [--reset]';
+  }
+
+  if (source === 'web' && webArgs[0] === 'web') {
+    return handleDuelWebAction({
+      db,
+      commandAlias: alias,
+      parentId,
+      actionArgs: webArgs.slice(1),
+    });
+  }
+
   let duelParentId = parentId;
 
   if (parentId !== null && !reset) {

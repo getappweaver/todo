@@ -3,7 +3,7 @@ import type { z } from 'zod';
 
 import { createDraftSessionId, storeDraft } from '../db/drafts';
 import { openDb } from '../db/open';
-import { getTodo, listTodos } from '../db/todos';
+import { getTodo, listTodos, listTodosInSubtree } from '../db/todos';
 import { formatDraftReply, hasDraftChildren } from '../output/draft/format';
 import {
   filterTodosForListTool,
@@ -169,6 +169,7 @@ After the CLI returns, apply the draft using the reply instructions included in 
 
 List policy:
 - For \`list\`, omit \`filter\` for active todos (\`pending\` + \`in_progress\`; not \`done\` or \`cancelled\`), same as \`!${alias} list\` with no filter. If \`filter\` is set, it must be a non-empty array of statuses to include (e.g. \`["in_progress"]\`, \`["done"]\`, or all four for everything). Combine statuses as needed.
+- If the user mentions a todo by copied ID (for example \`#154\`) and you need its context before answering or mutating, call \`list\` with \`id: 154\` first. ID-scoped \`list\` returns that todo and its visible subtree; use \`desc: true\` when descriptions matter.
 
 Output policy:
 - For \`list\`, return the tool output verbatim. Lines use a checkbox prefix (\`[ ]\`, \`[~]\`, etc.) and tree lines end with \`(id: N)\`. Do not rewrite into your own bullets, do not move IDs into backticks, and do not drop the checkboxes.
@@ -187,14 +188,28 @@ export async function executeTool(params: {
 
   switch (params.call.type) {
     case 'list': {
-      const todos = listTodos(params.db);
+      const rootId = params.call.id;
+
+      if (rootId !== undefined && !getTodo(params.db, rootId)) {
+        return `Todo not found: #${rootId}`;
+      }
+
+      const todos =
+        rootId === undefined
+          ? listTodos(params.db)
+          : listTodosInSubtree(params.db, rootId);
+
       const statusFilter = params.call.filter;
       const desc = params.call.desc ?? false;
-      const filtered = filterTodosForListTool(todos, statusFilter);
+
+      const filtered =
+        rootId === undefined || statusFilter !== undefined
+          ? filterTodosForListTool(todos, statusFilter)
+          : todos;
 
       return filtered.length === 0
         ? emptyTodoListMessage(statusFilter)
-        : formatTodoTree(filtered, desc);
+        : formatTodoTree(filtered, desc, rootId);
     }
 
     case 'create': {

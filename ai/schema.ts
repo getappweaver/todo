@@ -5,6 +5,14 @@ import { TodoStatusSchema, UpdateTodoInputSchema } from '../types/todos';
 
 export const TodoListCallSchema = z.object({
   type: z.literal('list'),
+  id: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'When the prompt mentions a todo like #154 and you need context, set id to fetch that todo and its visible subtree before acting.',
+    ),
   filter: z
     .array(TodoStatusSchema)
     .min(1)
