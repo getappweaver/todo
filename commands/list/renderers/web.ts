@@ -1365,7 +1365,8 @@ export function renderListWeb(
     buildStatusFilterPanel(
       representation,
       representation.data.view === 'tree' &&
-        representation.data.items.length > 0,
+        (representation.data.items.length > 0 ||
+          !hasExplicitStatusFilter(representation)),
     ),
   );
 
