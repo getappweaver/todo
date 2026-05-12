@@ -914,7 +914,10 @@ function buildDuelQuestionStoryOutput(params: {
             ].map(({ label, item, other, targetId }) => ({
               type: 'element' as const,
               tag: 'row' as const,
-              props: { itemAlign: 'start', className: 'todo-duel-card-row' },
+              props: {
+                itemAlign: 'start' as const,
+                className: 'todo-duel-card-row',
+              },
               children: [
                 {
                   type: 'element' as const,
