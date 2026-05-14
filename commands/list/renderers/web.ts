@@ -63,6 +63,11 @@ const todoListStylesheet = {
       gap: 0.35rem;
     }
 
+    .web-stack.todo-list-root {
+      width: 100%;
+      max-width: 52rem;
+    }
+
     .web-row.todo-item-main-row {
       align-items: flex-start;
       gap: 0.35rem;
@@ -98,12 +103,27 @@ const todoListStylesheet = {
     }
 
     .web-overflow-menu[data-ui='todo-status-menu'] .web-overflow-panel .web-button {
-      padding: 0 !important;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 1px 10px !important;
+      color: #000;
     }
 
-    .web-overflow-menu[data-ui='todo-status-menu'] .web-overflow-panel .web-button.todo-status-current-option {
-      background: var(--color-warning);
+    .web-overflow-menu[data-ui='todo-status-menu'] .web-overflow-panel .web-button .web-node {
       color: #000;
+    }
+
+    .web-checkbox.todo-status-menu-checkbox {
+      width: 1rem;
+      height: 1rem;
+      pointer-events: none;
+    }
+
+    .web-checkbox.web-checkbox--retro.todo-status-menu-checkbox,
+    .web-checkbox.web-checkbox--retro.todo-status-menu-checkbox:checked,
+    .web-checkbox.web-checkbox--retro.todo-status-menu-checkbox:indeterminate {
+      border: 1px solid #000;
     }
 
     .web-form.todo-inline-add-form {
@@ -138,7 +158,7 @@ const todoListStylesheet = {
 
     .web-form.todo-ai-prompt-form.web-form--stacked {
       gap: 0.35rem;
-      margin-bottom: 0.6rem;
+      margin-top: 0.25rem;
     }
 
     .web-stack.todo-status-filter-panel {
@@ -147,9 +167,79 @@ const todoListStylesheet = {
       background: color-mix(in srgb, var(--color-surface-alt) 94%, var(--color-warning) 6%);
     }
 
-    .web-row.todo-status-filter-option {
-      justify-content: flex-start;
+    .web-text.todo-status-filter-label {
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+    }
+
+    .web-row.todo-status-filter-choices {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
       gap: 0.45rem;
+    }
+
+    .web-button.todo-status-filter-choice {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 1px 10px;
+      min-width: 8rem;
+      border: none;
+      background: transparent;
+      color: #fff;
+      font-weight: 800;
+      box-shadow: none;
+      transform: none;
+      cursor: pointer;
+    }
+
+    .web-button.todo-status-filter-choice:active {
+      box-shadow: none;
+      transform: none;
+    }
+
+    .web-button.todo-status-filter-choice .web-node {
+      color: inherit;
+    }
+
+    .web-button.todo-status-filter-choice:not(.is-selected):hover,
+    .web-button.todo-status-filter-choice:not(.is-selected):focus-visible {
+      background: color-mix(in srgb, var(--color-warning) 58%, transparent);
+      color: #000;
+    }
+
+    .web-button.todo-status-filter-choice.is-selected {
+      background: var(--color-warning);
+      color: #000;
+    }
+
+    .web-button.todo-status-filter-choice.is-selected:hover,
+    .web-button.todo-status-filter-choice.is-selected:focus-visible {
+      background: color-mix(in srgb, var(--color-warning) 78%, transparent);
+    }
+
+    .web-button.todo-status-filter-choice .web-checkbox.todo-status-menu-checkbox {
+      width: 1rem;
+      height: 1rem;
+      border: 1px solid #000;
+      pointer-events: none;
+    }
+
+    .web-button.todo-status-filter-choice .web-checkbox.web-checkbox--retro.todo-status-menu-checkbox,
+    .web-button.todo-status-filter-choice .web-checkbox.web-checkbox--retro.todo-status-menu-checkbox:checked,
+    .web-button.todo-status-filter-choice .web-checkbox.web-checkbox--retro.todo-status-menu-checkbox:indeterminate {
+      border: 1px solid #000;
+    }
+
+    .web-row.todo-status-filter-actions {
+      justify-content: center;
+      gap: 0.65rem;
+      margin-top: 1rem;
     }
   `,
 } as const;
@@ -232,15 +322,6 @@ function normalizeStatusFilters(value: unknown): TodoListFilterStatus[] {
     : [...DEFAULT_TODO_LIST_FILTER_STATUSES];
 }
 
-function isDefaultStatusFilter(statuses: TodoListFilterStatus[]): boolean {
-  return (
-    statuses.length === DEFAULT_TODO_LIST_FILTER_STATUSES.length &&
-    DEFAULT_TODO_LIST_FILTER_STATUSES.every((status) =>
-      statuses.includes(status),
-    )
-  );
-}
-
 function hasExplicitStatusFilter(representation: ListRepresentation): boolean {
   return representation.data.listInvocation.options.status !== undefined;
 }
@@ -251,11 +332,7 @@ function statusFilterListAction(
 ): WebAction {
   const options = { ...representation.data.listInvocation.options };
 
-  if (isDefaultStatusFilter(statuses)) {
-    delete options.status;
-  } else {
-    options.status = statuses;
-  }
+  options.status = statuses;
 
   return {
     type: 'command',
@@ -264,6 +341,7 @@ function statusFilterListAction(
     arguments: { ...representation.data.listInvocation.arguments },
     options,
     recordInTimeline: false,
+    revealIds: [STATUS_FILTER_REVEAL_ID],
   };
 }
 
@@ -280,6 +358,33 @@ function toggleStatusFilterAction(
     : [...selected, status];
 
   return statusFilterListAction(representation, next);
+}
+
+function statusCheckboxNode(status: TodoListFilterStatus): WebNode {
+  return {
+    type: 'element',
+    tag: 'checkbox',
+    props: {
+      checked: status === 'done',
+      ...(status === 'in_progress' ? { indeterminate: true } : {}),
+      disabled: true,
+      className: 'web-checkbox--retro todo-status-menu-checkbox',
+    },
+  };
+}
+
+function statusOptionChildren(
+  status: TodoListFilterStatus,
+  label: string,
+): WebNode[] {
+  return [
+    statusCheckboxNode(status),
+    {
+      type: 'element',
+      tag: 'text',
+      children: [{ type: 'text', value: label }],
+    },
+  ];
 }
 
 function buildStatusFilterPanel(
@@ -303,45 +408,48 @@ function buildStatusFilterPanel(
       {
         type: 'element',
         tag: 'text',
-        props: { weight: 'bold' },
+        props: { className: 'todo-status-filter-label' },
         children: [{ type: 'text', value: 'Show Items' }],
       },
-      ...TODO_LIST_FILTER_STATUSES.map(({ status, label }): WebNode => {
-        const checked = selected.includes(status);
-        const disabled = checked && selected.length === 1;
+      {
+        type: 'element',
+        tag: 'row',
+        props: { className: 'todo-status-filter-choices' },
+        children: TODO_LIST_FILTER_STATUSES.map(
+          ({ status, label }): WebNode => {
+            const checked = selected.includes(status);
+            const disabled = checked && selected.length === 1;
 
-        return {
-          type: 'element',
-          tag: 'row',
-          props: { className: 'todo-status-filter-option' },
-          children: [
-            {
+            return {
               type: 'element',
-              tag: 'checkbox',
+              tag: 'button',
               props: {
-                checked,
-                disabled,
+                label,
+                className: `todo-status-filter-choice${checked ? ' is-selected' : ''}`,
                 action: disabled
                   ? undefined
                   : toggleStatusFilterAction(representation, status),
               },
-            },
-            {
-              type: 'element',
-              tag: 'text',
-              children: [{ type: 'text', value: label }],
-            },
-          ],
-        };
-      }),
+              children: statusOptionChildren(status, label),
+            };
+          },
+        ),
+      },
       {
         type: 'element',
-        tag: 'button',
-        props: {
-          label: 'Close',
-          className: 'web-button--link',
-          action: hideInlineAddFormAction(STATUS_FILTER_REVEAL_ID),
-        },
+        tag: 'row',
+        props: { className: 'todo-status-filter-actions' },
+        children: [
+          {
+            type: 'element',
+            tag: 'button',
+            props: {
+              label: 'Close',
+              className: 'web-button--link',
+              action: hideInlineAddFormAction(STATUS_FILTER_REVEAL_ID),
+            },
+          },
+        ],
       },
     ],
   };
@@ -1163,45 +1271,45 @@ function renderTodoItemRow(
           ui: 'todo-status-menu',
         },
         children: [
-          {
-            type: 'element',
-            tag: 'menuItem',
-            props: {
-              label: 'Set as pending',
-              className:
-                item.status === 'pending'
-                  ? 'todo-status-current-option'
-                  : undefined,
-              tone: item.status === 'pending' ? 'warning' : undefined,
-              action: setTodoPendingAction(representation, item),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'menuItem',
-            props: {
-              label: 'Set as in progress',
-              className:
-                item.status === 'in_progress'
-                  ? 'todo-status-current-option'
-                  : undefined,
-              tone: item.status === 'in_progress' ? 'warning' : undefined,
-              action: setTodoInProgressAction(representation, item),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'menuItem',
-            props: {
-              label: 'Set as done',
-              className:
-                item.status === 'done'
-                  ? 'todo-status-current-option'
-                  : undefined,
-              tone: item.status === 'done' ? 'warning' : undefined,
-              action: setTodoDoneAction(representation, item),
-            },
-          },
+          ...(item.status === 'pending'
+            ? []
+            : [
+                {
+                  type: 'element' as const,
+                  tag: 'menuItem' as const,
+                  props: {
+                    label: 'Set as pending',
+                    action: setTodoPendingAction(representation, item),
+                  },
+                  children: statusOptionChildren('pending', 'Pending'),
+                },
+              ]),
+          ...(item.status === 'in_progress'
+            ? []
+            : [
+                {
+                  type: 'element' as const,
+                  tag: 'menuItem' as const,
+                  props: {
+                    label: 'Set as in progress',
+                    action: setTodoInProgressAction(representation, item),
+                  },
+                  children: statusOptionChildren('in_progress', 'In Progress'),
+                },
+              ]),
+          ...(item.status === 'done'
+            ? []
+            : [
+                {
+                  type: 'element' as const,
+                  tag: 'menuItem' as const,
+                  props: {
+                    label: 'Set as done',
+                    action: setTodoDoneAction(representation, item),
+                  },
+                  children: statusOptionChildren('done', 'Done'),
+                },
+              ]),
         ],
       },
       {
@@ -1350,7 +1458,7 @@ export function renderListWeb(
   representation: ListRepresentation,
   _context: WebRenderContext,
 ): WebNodeRoot {
-  const treeChildren: WebNode[] = [buildListAiCommandForm(representation)];
+  const treeChildren: WebNode[] = [];
 
   if (representation.data.scope) {
     treeChildren.push(
@@ -1420,6 +1528,8 @@ export function renderListWeb(
     );
   }
 
+  treeChildren.push(buildListAiCommandForm(representation));
+
   return {
     kind: 'ui',
     version: 1,
@@ -1429,6 +1539,7 @@ export function renderListWeb(
       type: 'element',
       tag: 'stack',
       props: {
+        className: 'todo-list-root',
         gap: 'md',
       },
       children: treeChildren,

@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.1.0] - 2026-05-15
+
+- feat: improve todo status controls (29cd9e7)
+
 ## [v5.0.2] - 2026-05-13
 
-- fix: lint (c64e4a2)
+- fix: lint (80a9c25)
 
 ## [v5.0.1] - 2026-05-13
 
