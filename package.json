@@ -1,7 +1,8 @@
 {
   "name": "appweaver-todo-plugin",
-  "version": "5.1.2",
+  "version": "5.1.3",
   "dmBot": {
+    "title": "Todo app",
     "coreApiVersion": "^9.10.0",
     "description": "Official AppWeaver Todo app. Adds focused AI-powered todo tools, commands, and data models to an AppWeaver workspace."
   },
