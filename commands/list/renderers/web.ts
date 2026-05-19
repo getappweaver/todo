@@ -54,6 +54,7 @@ const DEFAULT_TODO_LIST_FILTER_STATUSES: TodoListFilterStatus[] = [
 ];
 
 const STATUS_FILTER_REVEAL_ID = 'todo-list-status-filter';
+const ROOT_ADD_REVEAL_ID = 'todo-inline-add-root';
 
 const todoListStylesheet = {
   id: 'todo-list-web',
@@ -159,6 +160,9 @@ const todoListStylesheet = {
     .web-form.todo-ai-prompt-form.web-form--stacked {
       gap: 0.35rem;
       margin-top: 0.25rem;
+      padding: 0.65rem;
+      border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+      background: color-mix(in srgb, var(--color-surface-alt) 94%, var(--color-warning) 6%);
     }
 
     .web-stack.todo-status-filter-panel {
@@ -332,7 +336,11 @@ function statusFilterListAction(
 ): WebAction {
   const options = { ...representation.data.listInvocation.options };
 
-  options.status = statuses;
+  if (isDefaultStatusFilter(statuses)) {
+    delete options.status;
+  } else {
+    options.status = statuses;
+  }
 
   return {
     type: 'command',
@@ -343,6 +351,16 @@ function statusFilterListAction(
     recordInTimeline: false,
     revealIds: [STATUS_FILTER_REVEAL_ID],
   };
+}
+
+function isDefaultStatusFilter(statuses: TodoListFilterStatus[]): boolean {
+  if (statuses.length !== DEFAULT_TODO_LIST_FILTER_STATUSES.length) {
+    return false;
+  }
+
+  return DEFAULT_TODO_LIST_FILTER_STATUSES.every((status) =>
+    statuses.includes(status),
+  );
 }
 
 function toggleStatusFilterAction(
@@ -495,6 +513,12 @@ function buildListAiCommandForm(representation: ListRepresentation): WebNode {
       },
     },
     children: [
+      {
+        type: 'element',
+        tag: 'text',
+        props: { className: 'todo-status-filter-label' },
+        children: [{ type: 'text', value: 'Edit with AI' }],
+      },
       {
         type: 'element',
         tag: 'textArea',
@@ -854,7 +878,6 @@ function buildInlineTodoMoveForm(
 }
 
 function buildEmptyTodoListPrompt(representation: ListRepresentation): WebNode {
-  const revealId = 'todo-inline-add-root-empty';
   const filtered = hasExplicitStatusFilter(representation);
 
   return {
@@ -873,26 +896,32 @@ function buildEmptyTodoListPrompt(representation: ListRepresentation): WebNode {
           },
         ],
       },
-      ...(filtered
-        ? []
-        : [
-            {
-              type: 'element' as const,
-              tag: 'button' as const,
-              props: {
-                label: 'Add a new root item',
-                className: 'todo-new-root-button',
-                storyTargetId: 'todo-new-root',
-                action: revealInlineAddFormAction(revealId),
-              },
-            },
-            buildInlineTodoAddForm({
-              representation,
-              revealId,
-              underParentId: null,
-              placeholder: 'New todo',
-            }),
-          ]),
+    ],
+  };
+}
+
+function buildRootTodoAddControls(representation: ListRepresentation): WebNode {
+  return {
+    type: 'element',
+    tag: 'stack',
+    props: { gap: 'xs' },
+    children: [
+      {
+        type: 'element',
+        tag: 'button',
+        props: {
+          label: 'Add a new root item',
+          className: 'todo-new-root-button',
+          storyTargetId: 'todo-new-root',
+          action: revealInlineAddFormAction(ROOT_ADD_REVEAL_ID),
+        },
+      },
+      buildInlineTodoAddForm({
+        representation,
+        revealId: ROOT_ADD_REVEAL_ID,
+        underParentId: null,
+        placeholder: 'New todo',
+      }),
     ],
   };
 }
@@ -1528,6 +1557,7 @@ export function renderListWeb(
     );
   }
 
+  treeChildren.push(buildRootTodoAddControls(representation));
   treeChildren.push(buildListAiCommandForm(representation));
 
   return {
