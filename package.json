@@ -1,11 +1,11 @@
 {
-  "name": "dm-bot-todo-plugin",
-  "version": "5.1.1",
+  "name": "appweaver-todo-plugin",
+  "version": "5.1.2",
   "dmBot": {
     "coreApiVersion": "^9.10.0",
-    "description": "Todo management plugin for dm-bot"
+    "description": "Official AppWeaver Todo app. Adds focused AI-powered todo tools, commands, and data models to an AppWeaver workspace."
   },
-  "description": "Todo management plugin for dm-bot",
+  "description": "Official AppWeaver Todo app. Adds focused AI-powered todo tools, commands, and data models to an AppWeaver workspace.",
   "type": "module",
   "scripts": {
     "contrib:setup": "chmod +x ../../scripts/commit-msg ../../scripts/post-commit ../../scripts/ngit-helper.sh && git config core.hooksPath ../../scripts"
