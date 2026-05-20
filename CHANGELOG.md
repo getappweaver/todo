@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.1.5] - 2026-05-21
+
+- feat: add todo widget help (793831b)
+
 ## [v5.1.4] - 2026-05-20
 
-- chore: add appweaver plugin metadata (1e2d7e0)
+- chore: add appweaver plugin metadata (b9ee565)
 
 ## [v5.1.3] - 2026-05-20
 

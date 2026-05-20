@@ -1564,6 +1564,37 @@ export function renderListWeb(
     kind: 'ui',
     version: 1,
     meta: representation.meta,
+    widgetHelp: {
+      title: 'Todo app',
+      body: [
+        'The easiest and most effective planning app. Prioritize tasks with smart dueling sessions, create or edit todos with AI, and copy structured plans into your prompts.',
+      ],
+      stories: [
+        {
+          id: 'todo-add',
+          title: 'Add a todo',
+          description: 'Use the list widget native New flow to create a todo.',
+          pluginAlias: representation.meta.command,
+          iconUrl: '/plugin-icons/todo/commands__list__renderers__list.svg',
+        },
+        {
+          id: 'todo-add-ai-prompt',
+          title: 'Todo add via AI prompt',
+          description:
+            'Ask AI to draft todo items, then accept the reviewed changes into the list.',
+          pluginAlias: representation.meta.command,
+          iconUrl: '/plugin-icons/todo/commands__list__renderers__list.svg',
+        },
+        {
+          id: 'todo-duel-prioritize',
+          title: 'Prioritize todos with duel',
+          description:
+            'Compare sibling tasks pair by pair to rank the next work to do.',
+          pluginAlias: representation.meta.command,
+          iconUrl: '/plugin-icons/todo/commands__list__renderers__list.svg',
+        },
+      ],
+    },
     stylesheets: [todoListStylesheet],
     tree: {
       type: 'element',
