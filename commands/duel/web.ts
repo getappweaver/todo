@@ -9,6 +9,14 @@ import { renderListWeb } from '../list/renderers/web';
 import { createListRepresentation } from '../list/representation/builder';
 
 import {
+  renderDuelComplete as renderDuelCompleteComponent,
+  renderDuelQuestion,
+  renderDuelShell,
+  renderDuelScopeChoice,
+  type DuelButton,
+  type DuelTodoItem,
+} from './component';
+import {
   countActiveSiblings,
   getNextPair,
   getRankedSiblings,
@@ -39,70 +47,6 @@ type DuelWebActionProps = {
   returnRootId: number | null;
   actionArgs: string[];
 };
-
-type RenderTodoCardProps = {
-  db: Database;
-  item: RankedTodo;
-  label: 'A' | 'B' | null;
-  action: WebAction | null;
-  muted: boolean;
-};
-
-const duelWebStylesheet = {
-  id: 'todo-duel-web',
-  cssText: `
-    .todo-duel-shell {
-      border: 2px solid var(--color-warning);
-      background: color-mix(in srgb, var(--color-surface-alt) 88%, var(--color-warning) 12%);
-      box-shadow: 7px 7px 0 var(--color-panel-shadow);
-    }
-
-    .todo-duel-choice-card,
-    .todo-duel-card {
-      border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
-      background: var(--color-surface);
-    }
-
-    .todo-duel-card--pair {
-      border-color: color-mix(in srgb, var(--color-warning) 70%, var(--color-border));
-    }
-
-    .todo-duel-card--muted {
-      opacity: 0.62;
-    }
-
-    .todo-duel-actions {
-      flex-wrap: wrap;
-    }
-
-    .web-row.todo-duel-card-row {
-      align-items: flex-start;
-      gap: 2rem;
-    }
-
-    .todo-duel-pick-button {
-      min-width: 4rem;
-      font-weight: 800;
-      text-transform: uppercase;
-    }
-
-    .web-button.todo-duel-danger-button {
-      background: var(--color-danger);
-      color: #000;
-    }
-
-    .web-button.todo-duel-danger-button:hover,
-    .web-button.todo-duel-danger-button:focus-visible {
-      background: color-mix(in srgb, var(--color-danger) 86%, #000 14%);
-    }
-
-    .todo-duel-children {
-      margin-left: 0.75rem;
-      padding-left: 0.75rem;
-      border-left: 2px solid color-mix(in srgb, var(--color-warning) 50%, transparent);
-    }
-  `,
-} as const;
 
 function text(value: string): WebNode {
   return { type: 'text', value };
@@ -232,72 +176,13 @@ function scopeTitle(db: Database, parentId: number | null): string {
   return todo ? `Children of ${todoLabel(todo)}` : `Children of #${parentId}`;
 }
 
-function renderShell(props: {
-  commandAlias: string;
-  parentId: number | null;
-  title: string;
-  children: WebNode[];
-}): WebNodeRoot {
-  return {
-    kind: 'ui',
-    version: 1,
-    meta: {
-      command: props.commandAlias,
-      subcommand: 'duel',
-      arguments:
-        props.parentId === null
-          ? { duelArgs: ['web'] }
-          : { parentId: props.parentId, duelArgs: ['web'] },
-    },
-    stylesheets: [duelWebStylesheet],
-    tree: {
-      type: 'element',
-      tag: 'box',
-      props: {
-        className: 'todo-duel-shell',
-        padding: 'md',
-        scrollIntoViewOnMount: true,
-      },
-      children: [
-        {
-          type: 'element',
-          tag: 'stack',
-          props: { gap: 'md' },
-          children: [
-            {
-              type: 'element',
-              tag: 'stack',
-              props: { gap: 'xs' },
-              children: [
-                {
-                  type: 'element',
-                  tag: 'text',
-                  props: { weight: 'bold' },
-                  children: [text('Todo Duel')],
-                },
-                {
-                  type: 'element',
-                  tag: 'text',
-                  props: { tone: 'muted', size: 'sm' },
-                  children: [text(props.title)],
-                },
-              ],
-            },
-            ...props.children,
-          ],
-        },
-      ],
-    },
-  };
-}
-
 function renderMessage(props: {
   commandAlias: string;
   parentId: number | null;
   title: string;
   message: string;
 }): WebNodeRoot {
-  return renderShell({
+  return renderDuelShell({
     commandAlias: props.commandAlias,
     parentId: props.parentId,
     title: props.title,
@@ -321,217 +206,70 @@ function renderScopeChoice(props: {
 }): WebNodeRoot {
   const selected = getTodo(props.db, props.selectedId);
 
-  const title = selected
-    ? `Choose duel scope for ${todoLabel(selected)}`
-    : `Choose duel scope for #${props.selectedId}`;
-
-  return renderShell({
+  return renderDuelScopeChoice({
     commandAlias: props.commandAlias,
-    parentId: props.selectedId,
-    title,
-    children: [
-      {
-        type: 'element',
-        tag: 'row',
-        props: { gap: 'sm', className: 'todo-duel-actions' },
-        children: [
-          {
-            type: 'element',
-            tag: 'button',
-            props: {
-              label: `Duel children (${props.childCount})`,
-              action: duelWebAction({
-                commandAlias: props.commandAlias,
-                parentId: props.selectedId,
-                returnRootId: props.returnRootId,
-                actionArgs: ['start', 'children'],
-              }),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'button',
-            props: {
-              label: `Duel among siblings (${props.siblingCount})`,
-              action: duelWebAction({
-                commandAlias: props.commandAlias,
-                parentId: props.selectedId,
-                returnRootId: props.returnRootId,
-                actionArgs: ['start', 'siblings'],
-              }),
-            },
-          },
-        ],
-      },
-    ],
+    selectedId: props.selectedId,
+    returnRootId: props.returnRootId,
+    title: selected
+      ? `Choose duel scope for ${todoLabel(selected)}`
+      : `Choose duel scope for #${props.selectedId}`,
+    childCount: props.childCount,
+    siblingCount: props.siblingCount,
+    childrenStoryTargetId: null,
+    siblingsStoryTargetId: null,
   });
 }
 
-function renderTodoTree(db: Database, parentId: number): WebNode[] {
-  return getRankedSiblings(db, parentId).map((child) => ({
-    type: 'element' as const,
-    tag: 'treeItem' as const,
-    props: {
-      id: `todo-duel-tree-item-${child.id}`,
-      defaultExpanded: false,
-    },
-    summary: {
-      type: 'element' as const,
-      tag: 'text' as const,
-      props: { size: 'sm' as const, tone: 'muted' as const },
-      children: [text(todoLabel(child))],
-    },
-    children: renderTodoTree(db, child.id),
-  }));
-}
-
-function renderTodoChildren(db: Database, itemId: number): WebNode[] {
-  const children = getRankedSiblings(db, itemId);
-
-  if (children.length === 0) {
-    return [];
-  }
-
-  return [
-    {
-      type: 'element',
-      tag: 'treeItem',
-      props: {
-        id: `todo-duel-children-${itemId}`,
-        defaultExpanded: false,
-      },
-      summary: {
-        type: 'element',
-        tag: 'text',
-        props: { tone: 'muted', size: 'sm' },
-        children: [text(`${children.length} child item(s)`)],
-      },
-      children: [
-        {
-          type: 'element',
-          tag: 'stack',
-          props: { gap: 'xs', className: 'todo-duel-children' },
-          children: renderTodoTree(db, itemId),
-        },
-      ],
-    },
-  ];
-}
-
-function renderTodoCard(props: RenderTodoCardProps): WebNode {
+function toDuelTodoItem(db: Database, item: RankedTodo): DuelTodoItem {
   return {
-    type: 'element',
-    tag: 'box',
-    props: {
-      padding: 'sm',
-      className: [
-        'todo-duel-card',
-        props.label === null ? null : 'todo-duel-card--pair',
-        props.muted ? 'todo-duel-card--muted' : null,
-      ]
-        .filter((value): value is string => value !== null)
-        .join(' '),
-    },
-    children: [
-      {
-        type: 'element',
-        tag: 'row',
-        props: {
-          itemAlign: 'start',
-          className: 'todo-duel-card-row',
-        },
-        children: [
-          ...(props.label === null
-            ? []
-            : [
-                {
-                  type: 'element' as const,
-                  tag: 'button' as const,
-                  props: {
-                    label: props.label,
-                    className: 'todo-duel-pick-button',
-                    action: props.action ?? undefined,
-                  },
-                },
-              ]),
-          {
-            type: 'element',
-            tag: 'stack',
-            props: { gap: 'xs', fill: true },
-            children: [
-              {
-                type: 'element',
-                tag: 'text',
-                props: { weight: props.label === null ? 'normal' : 'bold' },
-                children: [text(todoLabel(props.item))],
-              },
-              ...renderTodoChildren(props.db, props.item.id),
-            ],
-          },
-        ],
-      },
-    ],
+    id: item.id,
+    todo: todoLabel(item),
+    children: getRankedSiblings(db, item.id).map((child) =>
+      toDuelTodoItem(db, child),
+    ),
   };
+}
+
+function duelButton(params: {
+  label: string;
+  action: WebAction;
+  className: string | null;
+  storyTargetId: string | null;
+}): DuelButton {
+  return params;
 }
 
 function renderDuelComplete(props: RenderDuelScopeProps): WebNodeRoot {
   const ranked = getRankedSiblings(props.db, props.parentId);
 
-  return renderShell({
+  return renderDuelCompleteComponent({
     commandAlias: props.commandAlias,
     parentId: props.parentId,
     title: scopeTitle(props.db, props.parentId),
-    children: [
-      {
-        type: 'element',
-        tag: 'text',
-        props: { weight: 'bold' },
-        children: [text('All items in this scope are scored.')],
-      },
-      {
-        type: 'element',
-        tag: 'stack',
-        props: { gap: 'xs' },
-        children: ranked.map((item, index) => ({
-          type: 'element' as const,
-          tag: 'text' as const,
-          children: [text(`${index + 1}. ${todoLabel(item)}`)],
-        })),
-      },
-      {
-        type: 'element',
-        tag: 'row',
-        props: { gap: 'sm', className: 'todo-duel-actions' },
-        children: [
-          {
-            type: 'element',
-            tag: 'button',
-            props: {
-              label: 'Done',
-              action: duelWebAction({
-                commandAlias: props.commandAlias,
-                parentId: props.parentId,
-                returnRootId: props.returnRootId,
-                actionArgs: ['quit'],
-              }),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'button',
-            props: {
-              label: 'Reset and re-duel',
-              className: 'todo-duel-danger-button',
-              action: duelWebAction({
-                commandAlias: props.commandAlias,
-                parentId: props.parentId,
-                returnRootId: props.returnRootId,
-                actionArgs: ['reset'],
-              }),
-            },
-          },
-        ],
-      },
+    ranked: ranked.map((item) => toDuelTodoItem(props.db, item)),
+    actions: [
+      duelButton({
+        label: 'Done',
+        className: null,
+        storyTargetId: null,
+        action: duelWebAction({
+          commandAlias: props.commandAlias,
+          parentId: props.parentId,
+          returnRootId: props.returnRootId,
+          actionArgs: ['quit'],
+        }),
+      }),
+      duelButton({
+        label: 'Reset and re-duel',
+        className: 'todo-duel-danger-button',
+        storyTargetId: null,
+        action: duelWebAction({
+          commandAlias: props.commandAlias,
+          parentId: props.parentId,
+          returnRootId: props.returnRootId,
+          actionArgs: ['reset'],
+        }),
+      }),
     ],
   });
 }
@@ -574,138 +312,70 @@ function renderDuelScope(props: RenderDuelScopeProps): WebNodeRoot {
   const completedQuestions = countDirectComparisonsInScope(props.db, ranked);
   const currentQuestion = Math.min(completedQuestions + 1, totalQuestions);
 
-  return renderShell({
+  return renderDuelQuestion({
     commandAlias: props.commandAlias,
     parentId: props.parentId,
     title: scopeTitle(props.db, props.parentId),
-    children: [
-      ...(props.notice === null
-        ? []
-        : [
-            {
-              type: 'element' as const,
-              tag: 'box' as const,
-              props: {
-                padding: 'sm' as const,
-                className: 'todo-duel-choice-card',
-              },
-              children: [
-                {
-                  type: 'element' as const,
-                  tag: 'text' as const,
-                  props: { tone: 'warning' as const },
-                  children: [text(props.notice)],
-                },
-              ],
-            },
-          ]),
-      {
-        type: 'element',
-        tag: 'text',
-        props: { weight: 'bold' },
-        children: [
-          text(
-            `Question ${currentQuestion} of ${totalQuestions}: which is more important?`,
-          ),
-        ],
-      },
-      renderTodoCard({
-        db: props.db,
-        item: itemA,
-        label: 'A',
+    notice: props.notice,
+    question: `Question ${currentQuestion} of ${totalQuestions}: which is more important?`,
+    a: {
+      label: 'A',
+      item: toDuelTodoItem(props.db, itemA),
+      action: duelWebAction({
+        commandAlias: props.commandAlias,
+        parentId: props.parentId,
+        returnRootId: props.returnRootId,
+        actionArgs: ['answer', String(itemA.id), String(itemB.id)],
+      }),
+      storyTargetId: null,
+    },
+    b: {
+      label: 'B',
+      item: toDuelTodoItem(props.db, itemB),
+      action: duelWebAction({
+        commandAlias: props.commandAlias,
+        parentId: props.parentId,
+        returnRootId: props.returnRootId,
+        actionArgs: ['answer', String(itemB.id), String(itemA.id)],
+      }),
+      storyTargetId: null,
+    },
+    actions: [
+      duelButton({
+        label: 'Skip',
+        className: null,
+        storyTargetId: null,
         action: duelWebAction({
           commandAlias: props.commandAlias,
           parentId: props.parentId,
           returnRootId: props.returnRootId,
-          actionArgs: ['answer', String(itemA.id), String(itemB.id)],
+          actionArgs: ['skip'],
         }),
-        muted: false,
       }),
-      renderTodoCard({
-        db: props.db,
-        item: itemB,
-        label: 'B',
+      duelButton({
+        label: 'Reset',
+        className: null,
+        storyTargetId: null,
         action: duelWebAction({
           commandAlias: props.commandAlias,
           parentId: props.parentId,
           returnRootId: props.returnRootId,
-          actionArgs: ['answer', String(itemB.id), String(itemA.id)],
+          actionArgs: ['reset'],
         }),
-        muted: false,
       }),
-      {
-        type: 'element',
-        tag: 'row',
-        props: { gap: 'sm', className: 'todo-duel-actions' },
-        children: [
-          {
-            type: 'element',
-            tag: 'button',
-            props: {
-              label: 'Skip',
-              action: duelWebAction({
-                commandAlias: props.commandAlias,
-                parentId: props.parentId,
-                returnRootId: props.returnRootId,
-                actionArgs: ['skip'],
-              }),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'button',
-            props: {
-              label: 'Reset',
-              action: duelWebAction({
-                commandAlias: props.commandAlias,
-                parentId: props.parentId,
-                returnRootId: props.returnRootId,
-                actionArgs: ['reset'],
-              }),
-            },
-          },
-          {
-            type: 'element',
-            tag: 'button',
-            props: {
-              label: 'Quit',
-              action: duelWebAction({
-                commandAlias: props.commandAlias,
-                parentId: props.parentId,
-                returnRootId: props.returnRootId,
-                actionArgs: ['quit'],
-              }),
-            },
-          },
-        ],
-      },
-      ...(remaining.length === 0
-        ? []
-        : [
-            {
-              type: 'element' as const,
-              tag: 'stack' as const,
-              props: { gap: 'xs' as const },
-              children: [
-                {
-                  type: 'element' as const,
-                  tag: 'text' as const,
-                  props: { tone: 'muted' as const, size: 'sm' as const },
-                  children: [text('Other items in this scope')],
-                },
-                ...remaining.map((item) =>
-                  renderTodoCard({
-                    db: props.db,
-                    item,
-                    label: null,
-                    action: null,
-                    muted: true,
-                  }),
-                ),
-              ],
-            },
-          ]),
+      duelButton({
+        label: 'Quit',
+        className: null,
+        storyTargetId: null,
+        action: duelWebAction({
+          commandAlias: props.commandAlias,
+          parentId: props.parentId,
+          returnRootId: props.returnRootId,
+          actionArgs: ['quit'],
+        }),
+      }),
     ],
+    remaining: remaining.map((item) => toDuelTodoItem(props.db, item)),
   });
 }
 

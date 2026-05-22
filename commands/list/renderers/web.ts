@@ -1407,6 +1407,7 @@ function renderTreeItem(
       filterName: item.text,
       filterPath: `${item.id}`,
       defaultExpanded: false,
+      storyTargetId: `todo-tree-toggle-${item.id}`,
     },
     summary: {
       type: 'element',

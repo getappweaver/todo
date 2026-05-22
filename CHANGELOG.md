@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.2.0] - 2026-05-23
+
+- feat: add reusable todo story components (287edb8)
+
 ## [v5.1.5] - 2026-05-21
 
-- feat: add todo widget help (793831b)
+- feat: add todo widget help (7efdc45)
 
 ## [v5.1.4] - 2026-05-20
 
