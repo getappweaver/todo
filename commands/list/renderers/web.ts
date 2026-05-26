@@ -968,7 +968,7 @@ function setTodoPendingAction(
   representation: ListRepresentation,
   item: ListItem,
 ): WebAction {
-  const refresh = listRefresh(representation);
+  const refresh = listRefreshHighlightingTodo(representation, item.id);
   const command = representation.meta.command;
 
   return {
@@ -997,7 +997,7 @@ function setTodoInProgressAction(
     arguments: { id: item.id },
     options: {},
     recordInTimeline: false,
-    refresh: listRefresh(representation),
+    refresh: listRefreshHighlightingTodo(representation, item.id),
   };
 }
 
@@ -1005,6 +1005,11 @@ function setTodoDoneAction(
   representation: ListRepresentation,
   item: ListItem,
 ): WebAction {
+  const refresh =
+    item.parentId === null
+      ? listRefresh(representation)
+      : listRefreshHighlightingTodo(representation, item.parentId);
+
   return {
     type: 'command',
     command: representation.meta.command,
@@ -1012,7 +1017,7 @@ function setTodoDoneAction(
     arguments: { id: item.id },
     options: {},
     recordInTimeline: false,
-    refresh: listRefresh(representation),
+    refresh,
   };
 }
 
