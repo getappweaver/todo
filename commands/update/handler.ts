@@ -4,6 +4,8 @@ import { TodoStatusSchema } from '../../types/todos';
 
 import { getTodo, updateTodo } from './db';
 
+const TODO_MUTATION_DEBUG = process.env.TODO_MUTATION_DEBUG === '1';
+
 function parseOptionalInteger(value: unknown): number | null {
   return typeof value === 'number' ? value : null;
 }
@@ -54,7 +56,9 @@ export function handleUpdateCommand(params: {
     };
   }
 
-  if (!getTodo(params.db, id)) {
+  const existing = getTodo(params.db, id);
+
+  if (!existing) {
     return {
       type: 'error',
       message: `Todo not found: #${id}`,
@@ -84,6 +88,13 @@ export function handleUpdateCommand(params: {
       }
 
       const updated = updateTodo(params.db, { id, status: statusParsed.data });
+
+      if (TODO_MUTATION_DEBUG) {
+        console.log(
+          `[todo:mutation] update: status ${existing.status} -> ${statusParsed.data}`,
+          JSON.stringify({ id }),
+        );
+      }
 
       return {
         type: 'success',

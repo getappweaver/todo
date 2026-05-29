@@ -1,6 +1,10 @@
 import type { Database } from 'bun:sqlite';
 
+import { getTodo } from '../../db/todos';
+
 import { startTodo } from './db';
+
+const TODO_MUTATION_DEBUG = process.env.TODO_MUTATION_DEBUG === '1';
 
 function parseOptionalInteger(value: unknown): number | null {
   return typeof value === 'number' ? value : null;
@@ -32,11 +36,22 @@ export function handleStartCommand(params: {
     };
   }
 
-  if (!startTodo(params.db, id)) {
+  const existing = getTodo(params.db, id);
+
+  if (!existing) {
     return {
       type: 'error',
       message: `Todo not found: #${id}`,
     };
+  }
+
+  startTodo(params.db, id);
+
+  if (TODO_MUTATION_DEBUG) {
+    console.log(
+      `[todo:mutation] update: status ${existing.status} -> in_progress`,
+      JSON.stringify({ id }),
+    );
   }
 
   return {

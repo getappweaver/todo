@@ -19,11 +19,22 @@ export const ListItemSchema = z.object({
   wins: z.number().int().nonnegative(),
   losses: z.number().int().nonnegative(),
   winRate: z.number().nullable(),
+  isChampion: z.boolean().default(false),
+  isPriorityWinner: z.boolean().default(false),
 });
 
 export const ListScopeSchema = z.object({
   rootId: z.number().int().positive(),
   rootTitle: z.string().min(1),
+});
+
+export const ListPriorityPromptSchema = z.object({
+  parentId: z.number().int().positive().nullable(),
+  parentTitle: z.string().min(1),
+  championId: z.number().int().positive(),
+  championTitle: z.string().min(1),
+  championPath: z.array(z.string().min(1)),
+  scopeHash: z.string().min(1),
 });
 
 export const ListDataSchema = z.object({
@@ -35,6 +46,7 @@ export const ListDataSchema = z.object({
     arguments: z.record(z.string(), z.unknown()),
     options: z.record(z.string(), z.unknown()),
   }),
+  priorityPrompt: ListPriorityPromptSchema.nullable().default(null),
   items: z.array(ListItemSchema),
 });
 
@@ -45,5 +57,6 @@ export const ListRepresentationSchema = createRepresentationSchema(
 });
 
 export type ListItem = z.infer<typeof ListItemSchema>;
+export type ListPriorityPrompt = z.infer<typeof ListPriorityPromptSchema>;
 export type ListScope = z.infer<typeof ListScopeSchema>;
 export type ListRepresentation = z.infer<typeof ListRepresentationSchema>;

@@ -3,28 +3,40 @@ import type { Database } from 'bun:sqlite';
 import type { WebAction, WebNode, WebNodeRoot } from '@src/web/ui-schema';
 
 import { getTodo } from '../../db/todos';
+import type { Todo } from '../../types/todos';
 
 import { handleListCommand } from '../list/handler';
 import { renderListWeb } from '../list/renderers/web';
 import { createListRepresentation } from '../list/representation/builder';
 
 import {
-  renderDuelComplete as renderDuelCompleteComponent,
+  renderChampionQuestion,
   renderDuelQuestion,
   renderDuelShell,
-  renderDuelScopeChoice,
+  renderStaleChampionQuestion,
+  type ChampionContext,
   type DuelButton,
   type DuelTodoItem,
 } from './component';
 import {
-  countActiveSiblings,
-  getNextPair,
+  clearChampionScopeSkips,
+  findNextChampionScope,
+  getChampionScope,
+  getNextTournamentPairForScope,
   getRankedSiblings,
+  getStaleChampionCandidate,
+  keepChampion,
   recordComparison,
-  resetComparisons,
+  resetChampionScope,
+  setChampion,
+  skipComparison,
+  skipChampionScope,
+  countSkippedComparisonsInScope,
   wouldContradict,
 } from './db';
-import type { RankedTodo } from './representation';
+import type { ChampionScope, ChampionTodo, RankedTodo } from './representation';
+
+const TODO_PRIORITIZE_DEBUG = process.env.TODO_PRIORITIZE_DEBUG === '1';
 
 type HandleDuelWebActionProps = {
   db: Database;
@@ -41,6 +53,10 @@ type RenderDuelScopeProps = {
   notice: string | null;
 };
 
+type RenderRefreshChampionPickProps = RenderDuelScopeProps & {
+  flowRootId: number | null;
+};
+
 type DuelWebActionProps = {
   commandAlias: string;
   parentId: number | null;
@@ -50,6 +66,28 @@ type DuelWebActionProps = {
 
 function text(value: string): WebNode {
   return { type: 'text', value };
+}
+
+function debugPrioritize(event: string, data: Record<string, unknown>): void {
+  if (!TODO_PRIORITIZE_DEBUG) {
+    return;
+  }
+
+  console.log(`[todo:prioritize] ${event}`, JSON.stringify(data));
+}
+
+function describeScope(scope: ChampionScope | null): Record<string, unknown> {
+  if (scope === null) {
+    return { scope: null };
+  }
+
+  return {
+    parentId: scope.parentId,
+    scopeHash: scope.scopeHash,
+    currentChampionId: scope.currentChampionId,
+    childIds: scope.children.map((child) => child.id),
+    childLabels: scope.children.map((child) => child.todo),
+  };
 }
 
 function duelWebAction(props: DuelWebActionProps): WebAction {
@@ -98,8 +136,99 @@ function parseReturnRootId(actionArgs: string[]): number | null {
   return raw === 'root' ? null : parsePositiveInteger(raw);
 }
 
+function parsePrioritizeRootId(
+  actionArgs: string[],
+): number | null | undefined {
+  const markerIndex = actionArgs.indexOf('prioritizeRoot');
+
+  if (markerIndex < 0) {
+    return undefined;
+  }
+
+  const raw = actionArgs[markerIndex + 1];
+
+  return raw === 'root' ? null : parsePositiveInteger(raw);
+}
+
 function todoLabel(todo: { todo: string }): string {
   return todo.todo;
+}
+
+function todoPathToRoot(db: Database, todoId: number): string[] {
+  const path: string[] = [];
+  let currentId: number | null = todoId;
+
+  while (currentId !== null) {
+    const todo = getTodo(db, currentId);
+
+    if (!todo) {
+      break;
+    }
+
+    path.unshift(todoLabel(todo));
+    currentId = todo.parent_id ?? null;
+  }
+
+  return path;
+}
+
+function todoIdPathToRoot(db: Database, todoId: number): number[] {
+  const path: number[] = [];
+  let currentId: number | null = todoId;
+
+  while (currentId !== null) {
+    const todo = getTodo(db, currentId);
+
+    if (!todo) {
+      break;
+    }
+
+    path.unshift(todo.id);
+    currentId = todo.parent_id ?? null;
+  }
+
+  return path;
+}
+
+function championContext(props: {
+  db: Database;
+  scope: ChampionScope;
+  rootId: number | null;
+}): ChampionContext {
+  const rootItems = getRankedSiblings(props.db, props.rootId).map((sibling) =>
+    toDuelTodoItem(props.db, sibling),
+  );
+
+  if (props.scope.parentId === props.rootId) {
+    return {
+      parentPath:
+        props.scope.parentId === null
+          ? []
+          : todoPathToRoot(props.db, props.scope.parentId),
+      currentParentId: null,
+      rootItems,
+      defaultExpandedIds: [],
+    };
+  }
+
+  const parentPath =
+    props.scope.parentId === null
+      ? []
+      : todoPathToRoot(props.db, props.scope.parentId);
+
+  const expandedPath =
+    props.scope.parentId === null
+      ? []
+      : todoIdPathToRoot(props.db, props.scope.parentId);
+
+  return {
+    parentPath,
+    currentParentId: props.scope.parentId,
+    rootItems,
+    defaultExpandedIds: expandedPath.filter(
+      (id) => props.rootId === null || id !== props.rootId,
+    ),
+  };
 }
 
 function countDirectComparisonsInScope(
@@ -160,6 +289,7 @@ function renderList(props: {
         arguments: listArguments,
         options: {},
       },
+      priorityPrompt: result.type === 'empty' ? null : result.priorityPrompt,
       items: result.type === 'empty' ? [] : result.items,
     }),
     { prefix: '/' },
@@ -196,38 +326,54 @@ function renderMessage(props: {
   });
 }
 
-function renderScopeChoice(props: {
-  db: Database;
-  commandAlias: string;
-  selectedId: number;
-  returnRootId: number | null;
-  childCount: number;
-  siblingCount: number;
-}): WebNodeRoot {
-  const selected = getTodo(props.db, props.selectedId);
-
-  return renderDuelScopeChoice({
-    commandAlias: props.commandAlias,
-    selectedId: props.selectedId,
-    returnRootId: props.returnRootId,
-    title: selected
-      ? `Choose duel scope for ${todoLabel(selected)}`
-      : `Choose duel scope for #${props.selectedId}`,
-    childCount: props.childCount,
-    siblingCount: props.siblingCount,
-    childrenStoryTargetId: null,
-    siblingsStoryTargetId: null,
-  });
+function toDuelTodoItem(db: Database, item: RankedTodo): DuelTodoItem {
+  return toDuelTodoItemFromTodo(db, item);
 }
 
-function toDuelTodoItem(db: Database, item: RankedTodo): DuelTodoItem {
+function toDuelTodoItemFromTodo(db: Database, item: Todo): DuelTodoItem {
+  const childScope = getChampionScope(db, item.id);
+  const championId = childScope.currentChampionId;
+
   return {
     id: item.id,
     todo: todoLabel(item),
+    status: item.status,
+    hasChampion: championId !== null,
+    selectedChampion: false,
     children: getRankedSiblings(db, item.id).map((child) =>
-      toDuelTodoItem(db, child),
+      markSelectedChampion(toDuelTodoItem(db, child), championId),
     ),
   };
+}
+
+function formatRepresentativePath(path: RankedTodo[]): string {
+  return path
+    .map((pathItem, index) =>
+      index === 0
+        ? todoLabel(pathItem)
+        : `${'  '.repeat(index)}→ ${todoLabel(pathItem)}`,
+    )
+    .join('\n');
+}
+
+function toChampionRepresentativeItem(item: ChampionTodo): DuelTodoItem {
+  const representative = item.championLeaf;
+
+  return {
+    id: item.id,
+    todo: formatRepresentativePath(item.championPath),
+    status: representative.status,
+    hasChampion: item.championPath.length > 1,
+    selectedChampion: false,
+    children: [],
+  };
+}
+
+function markSelectedChampion(
+  item: DuelTodoItem,
+  championId: number | null,
+): DuelTodoItem {
+  return item.id === championId ? { ...item, selectedChampion: true } : item;
 }
 
 function duelButton(params: {
@@ -239,17 +385,117 @@ function duelButton(params: {
   return params;
 }
 
-function renderDuelComplete(props: RenderDuelScopeProps): WebNodeRoot {
-  const ranked = getRankedSiblings(props.db, props.parentId);
+function renderPrioritizeComplete(props: RenderDuelScopeProps): WebNodeRoot {
+  debugPrioritize('complete:return-list', {
+    parentId: props.parentId,
+    returnRootId: props.returnRootId,
+    notice: props.notice,
+  });
 
-  return renderDuelCompleteComponent({
+  return renderList({
+    db: props.db,
+    commandAlias: props.commandAlias,
+    rootId: props.returnRootId,
+  });
+}
+
+function renderPrioritizeScope(props: RenderDuelScopeProps): WebNodeRoot {
+  const scope = findNextChampionScope(props.db, props.parentId);
+
+  debugPrioritize('render-scope', {
+    parentId: props.parentId,
+    returnRootId: props.returnRootId,
+    notice: props.notice,
+    nextScope: describeScope(scope),
+  });
+
+  if (scope === null) {
+    return renderPrioritizeComplete(props);
+  }
+
+  return renderChampionScope({ ...props, scope });
+}
+
+function renderPrioritizeFromButton(props: RenderDuelScopeProps): WebNodeRoot {
+  if (props.parentId !== null) {
+    return renderRefreshChampionPick({ ...props, flowRootId: props.parentId });
+  }
+
+  const stale = getStaleChampionCandidate(props.db, props.parentId);
+
+  if (stale !== null) {
+    clearChampionScopeSkips({
+      db: props.db,
+      parentId: stale.scope.parentId,
+      scopeHash: stale.scope.scopeHash,
+    });
+
+    debugPrioritize('stale-root-button:auto-duel', {
+      rootId: props.parentId,
+      returnRootId: props.returnRootId,
+      scope: describeScope(stale.scope),
+      storedChampionId: stale.stored.championId,
+      storedScopeHash: stale.stored.scopeHash,
+    });
+
+    return renderChampionRepresentativeDuel({ ...props, scope: stale.scope });
+  }
+
+  return renderPrioritizeScope(props);
+}
+
+function renderRefreshChampionPick(
+  props: RenderRefreshChampionPickProps,
+): WebNodeRoot {
+  const scope = getChampionScope(props.db, props.parentId);
+
+  debugPrioritize('refresh-pick', {
+    parentId: props.parentId,
+    returnRootId: props.returnRootId,
+    scope: describeScope(scope),
+  });
+
+  if (scope.children.length < 2) {
+    return renderMessage({
+      commandAlias: props.commandAlias,
+      parentId: props.parentId,
+      title: scopeTitle(props.db, props.parentId),
+      message: 'Need at least 2 active children to prioritize here.',
+    });
+  }
+
+  return renderChampionQuestion({
     commandAlias: props.commandAlias,
     parentId: props.parentId,
     title: scopeTitle(props.db, props.parentId),
-    ranked: ranked.map((item) => toDuelTodoItem(props.db, item)),
+    notice: props.notice,
+    context: championContext({
+      db: props.db,
+      scope,
+      rootId: props.parentId,
+    }),
+    choices: scope.children.map((item) => ({
+      item: markSelectedChampion(
+        toDuelTodoItem(props.db, item),
+        scope.currentChampionId,
+      ),
+      storyTargetId: null,
+      action: duelWebAction({
+        commandAlias: props.commandAlias,
+        parentId: props.parentId,
+        returnRootId: props.returnRootId,
+        actionArgs: [
+          'prioritizeRefreshPick',
+          String(item.id),
+          scope.scopeHash,
+          'prioritizeRoot',
+          props.flowRootId === null ? 'root' : String(props.flowRootId),
+        ],
+      }),
+    })),
     actions: [
       duelButton({
-        label: 'Done',
+        label: 'Quit',
         className: null,
         storyTargetId: null,
         action: duelWebAction({
@@ -259,86 +505,122 @@ function renderDuelComplete(props: RenderDuelScopeProps): WebNodeRoot {
           actionArgs: ['quit'],
         }),
       }),
-      duelButton({
-        label: 'Reset and re-duel',
-        className: 'todo-duel-danger-button',
-        storyTargetId: null,
-        action: duelWebAction({
-          commandAlias: props.commandAlias,
-          parentId: props.parentId,
-          returnRootId: props.returnRootId,
-          actionArgs: ['reset'],
-        }),
-      }),
     ],
   });
 }
 
-function renderDuelScope(props: RenderDuelScopeProps): WebNodeRoot {
-  const ranked = getRankedSiblings(props.db, props.parentId);
-  const pair = getNextPair(props.db, props.parentId);
+function renderChampionRepresentativeDuel(
+  props: RenderDuelScopeProps & { scope: ChampionScope },
+): WebNodeRoot {
+  const pair = getNextTournamentPairForScope({
+    db: props.db,
+    parentId: props.scope.parentId,
+    skipScopeHash: props.scope.scopeHash,
+  });
 
-  if (ranked.length < 2) {
-    return renderMessage({
-      commandAlias: props.commandAlias,
-      parentId: props.parentId,
-      title: scopeTitle(props.db, props.parentId),
-      message: 'Need at least 2 active todos at this level to duel.',
-    });
-  }
+  debugPrioritize('representative-duel', {
+    rootId: props.parentId,
+    scope: describeScope(props.scope),
+    pair,
+  });
 
   if (!pair) {
-    return renderDuelComplete(props);
+    const top = getRankedSiblings(props.db, props.scope.parentId)[0];
+
+    if (top) {
+      setChampion({
+        db: props.db,
+        parentId: props.scope.parentId,
+        scopeHash: props.scope.scopeHash,
+        championId: top.id,
+        source: 'prioritize',
+      });
+
+      debugPrioritize('representative-duel:set-scope-champion', {
+        parentId: props.scope.parentId,
+        scopeHash: props.scope.scopeHash,
+        championId: top.id,
+      });
+    }
+
+    return renderPrioritizeScope(props);
   }
 
-  const byId = new Map(ranked.map((item) => [item.id, item]));
+  const byId = new Map(props.scope.children.map((item) => [item.id, item]));
   const itemA = byId.get(pair.aId);
   const itemB = byId.get(pair.bId);
 
   if (!itemA || !itemB) {
-    return renderMessage({
-      commandAlias: props.commandAlias,
-      parentId: props.parentId,
-      title: scopeTitle(props.db, props.parentId),
-      message: 'Could not load the next duel pair.',
+    return renderPrioritizeScope({
+      ...props,
+      notice:
+        'This priority duel changed. Recalculated the next needed choice.',
     });
   }
 
-  const remaining = ranked.filter(
+  const remaining = props.scope.children.filter(
     (item) => item.id !== itemA.id && item.id !== itemB.id,
   );
 
-  const totalQuestions = (ranked.length * (ranked.length - 1)) / 2;
-  const completedQuestions = countDirectComparisonsInScope(props.db, ranked);
-  const currentQuestion = Math.min(completedQuestions + 1, totalQuestions);
+  const totalQuestions = Math.max(props.scope.children.length - 1, 1);
+
+  const completedQuestions = countDirectComparisonsInScope(
+    props.db,
+    props.scope.children,
+  );
+
+  const skippedQuestions = countSkippedComparisonsInScope({
+    db: props.db,
+    ranked: props.scope.children,
+    scopeHash: props.scope.scopeHash,
+  });
+
+  const currentQuestion = Math.min(
+    completedQuestions + skippedQuestions + 1,
+    totalQuestions,
+  );
 
   return renderDuelQuestion({
     commandAlias: props.commandAlias,
-    parentId: props.parentId,
-    title: scopeTitle(props.db, props.parentId),
+    parentId: props.scope.parentId,
+    title: scopeTitle(props.db, props.scope.parentId),
     notice: props.notice,
-    question: `Question ${currentQuestion} of ${totalQuestions}: which is more important?`,
+    question: `Champion tournament ${currentQuestion} of ~${totalQuestions}: which should you do first?`,
     a: {
       label: 'A',
-      item: toDuelTodoItem(props.db, itemA),
+      item: toChampionRepresentativeItem(itemA),
+      storyTargetId: null,
       action: duelWebAction({
         commandAlias: props.commandAlias,
-        parentId: props.parentId,
+        parentId: props.scope.parentId,
         returnRootId: props.returnRootId,
-        actionArgs: ['answer', String(itemA.id), String(itemB.id)],
+        actionArgs: [
+          'prioritizeAnswer',
+          String(itemA.id),
+          String(itemB.id),
+          props.scope.scopeHash,
+          'prioritizeRoot',
+          props.parentId === null ? 'root' : String(props.parentId),
+        ],
       }),
-      storyTargetId: null,
     },
     b: {
       label: 'B',
-      item: toDuelTodoItem(props.db, itemB),
+      item: toChampionRepresentativeItem(itemB),
+      storyTargetId: null,
       action: duelWebAction({
         commandAlias: props.commandAlias,
-        parentId: props.parentId,
+        parentId: props.scope.parentId,
         returnRootId: props.returnRootId,
-        actionArgs: ['answer', String(itemB.id), String(itemA.id)],
+        actionArgs: [
+          'prioritizeAnswer',
+          String(itemB.id),
+          String(itemA.id),
+          props.scope.scopeHash,
+          'prioritizeRoot',
+          props.parentId === null ? 'root' : String(props.parentId),
+        ],
       }),
-      storyTargetId: null,
     },
     actions: [
       duelButton({
@@ -347,20 +629,16 @@ function renderDuelScope(props: RenderDuelScopeProps): WebNodeRoot {
         storyTargetId: null,
         action: duelWebAction({
           commandAlias: props.commandAlias,
-          parentId: props.parentId,
+          parentId: props.scope.parentId,
           returnRootId: props.returnRootId,
-          actionArgs: ['skip'],
-        }),
-      }),
-      duelButton({
-        label: 'Reset',
-        className: null,
-        storyTargetId: null,
-        action: duelWebAction({
-          commandAlias: props.commandAlias,
-          parentId: props.parentId,
-          returnRootId: props.returnRootId,
-          actionArgs: ['reset'],
+          actionArgs: [
+            'prioritizeDuelSkip',
+            String(itemA.id),
+            String(itemB.id),
+            props.scope.scopeHash,
+            'prioritizeRoot',
+            props.parentId === null ? 'root' : String(props.parentId),
+          ],
         }),
       }),
       duelButton({
@@ -375,182 +653,696 @@ function renderDuelScope(props: RenderDuelScopeProps): WebNodeRoot {
         }),
       }),
     ],
-    remaining: remaining.map((item) => toDuelTodoItem(props.db, item)),
+    remaining: remaining.map(toChampionRepresentativeItem),
   });
 }
 
-function isActiveSiblingInScope(
-  db: Database,
-  parentId: number | null,
-  id: number,
-): boolean {
-  return getRankedSiblings(db, parentId).some((item) => item.id === id);
-}
+function renderChampionScope(
+  props: RenderDuelScopeProps & { scope: ChampionScope },
+): WebNodeRoot {
+  const stale = getStaleChampionCandidate(props.db, props.scope.parentId);
 
-function handleChoose(props: HandleDuelWebActionProps): WebNodeRoot {
-  const returnRootId = parseReturnRootId(props.actionArgs);
+  if (stale !== null && props.scope.parentId === props.parentId) {
+    debugPrioritize('stale-top-scope:auto-duel', {
+      rootId: props.parentId,
+      returnRootId: props.returnRootId,
+      scope: describeScope(props.scope),
+      storedChampionId: stale.stored.championId,
+      storedScopeHash: stale.stored.scopeHash,
+    });
 
-  if (props.parentId === null) {
-    return renderDuelScope({
-      db: props.db,
+    return renderChampionRepresentativeDuel(props);
+  }
+
+  if (stale !== null && stale.scope.scopeHash === props.scope.scopeHash) {
+    debugPrioritize('stale-prompt', {
+      rootId: props.parentId,
+      returnRootId: props.returnRootId,
+      scope: describeScope(props.scope),
+      storedChampionId: stale.stored.championId,
+      storedScopeHash: stale.stored.scopeHash,
+    });
+
+    return renderStaleChampionQuestion({
       commandAlias: props.commandAlias,
-      parentId: null,
-      returnRootId,
-      notice: null,
+      parentId: props.scope.parentId,
+      notice: props.notice,
+      context: championContext({
+        db: props.db,
+        scope: props.scope,
+        rootId: props.parentId,
+      }),
+      champion: toDuelTodoItem(props.db, stale.champion),
+      actions: [
+        duelButton({
+          label: 'Keep current',
+          className: 'todo-duel-pick-button todo-champion-pick-row',
+          storyTargetId: null,
+          action: duelWebAction({
+            commandAlias: props.commandAlias,
+            parentId: props.scope.parentId,
+            returnRootId: props.returnRootId,
+            actionArgs: [
+              'prioritizeKeepChampion',
+              String(stale.champion.id),
+              props.scope.scopeHash,
+              'prioritizeRoot',
+              props.parentId === null ? 'root' : String(props.parentId),
+            ],
+          }),
+        }),
+        duelButton({
+          label: 'Pick new',
+          className: null,
+          storyTargetId: null,
+          action: duelWebAction({
+            commandAlias: props.commandAlias,
+            parentId: props.scope.parentId,
+            returnRootId: props.returnRootId,
+            actionArgs: [
+              'prioritizePickNew',
+              props.scope.scopeHash,
+              'prioritizeRoot',
+              props.parentId === null ? 'root' : String(props.parentId),
+            ],
+          }),
+        }),
+        duelButton({
+          label: 'Skip',
+          className: null,
+          storyTargetId: null,
+          action: duelWebAction({
+            commandAlias: props.commandAlias,
+            parentId: props.scope.parentId,
+            returnRootId: props.returnRootId,
+            actionArgs: [
+              'prioritizeSkip',
+              props.scope.scopeHash,
+              'prioritizeRoot',
+              props.parentId === null ? 'root' : String(props.parentId),
+            ],
+          }),
+        }),
+        duelButton({
+          label: 'Quit',
+          className: null,
+          storyTargetId: null,
+          action: duelWebAction({
+            commandAlias: props.commandAlias,
+            parentId: props.parentId,
+            returnRootId: props.returnRootId,
+            actionArgs: ['quit'],
+          }),
+        }),
+      ],
     });
   }
 
-  const selected = getTodo(props.db, props.parentId);
-
-  if (!selected) {
-    return renderMessage({
-      commandAlias: props.commandAlias,
-      parentId: props.parentId,
-      title: `Todo #${props.parentId}`,
-      message: `Todo #${props.parentId} not found.`,
-    });
+  if (props.scope.parentId === props.parentId) {
+    return renderChampionRepresentativeDuel(props);
   }
 
-  const childCount = countActiveSiblings(props.db, props.parentId);
-  const siblingParentId = selected.parent_id ?? null;
-  const siblingCount = countActiveSiblings(props.db, siblingParentId);
-
-  if (childCount >= 2 && siblingCount >= 2) {
-    return renderScopeChoice({
-      db: props.db,
-      commandAlias: props.commandAlias,
-      selectedId: props.parentId,
-      returnRootId,
-      childCount,
-      siblingCount,
-    });
-  }
-
-  if (childCount >= 2) {
-    return renderDuelScope({
-      db: props.db,
-      commandAlias: props.commandAlias,
-      parentId: props.parentId,
-      returnRootId,
-      notice: null,
-    });
-  }
-
-  if (siblingCount >= 2) {
-    return renderDuelScope({
-      db: props.db,
-      commandAlias: props.commandAlias,
-      parentId: siblingParentId,
-      returnRootId,
-      notice: null,
-    });
-  }
-
-  return renderMessage({
+  return renderChampionQuestion({
     commandAlias: props.commandAlias,
-    parentId: props.parentId,
-    title: todoLabel(selected),
-    message:
-      'Need at least 2 active todos in children or sibling scope to duel.',
+    parentId: props.scope.parentId,
+    title: scopeTitle(props.db, props.scope.parentId),
+    notice: props.notice,
+    context: championContext({
+      db: props.db,
+      scope: props.scope,
+      rootId: props.parentId,
+    }),
+    choices: props.scope.children.map((item) => ({
+      item: toDuelTodoItem(props.db, item),
+      storyTargetId: null,
+      action: duelWebAction({
+        commandAlias: props.commandAlias,
+        parentId: props.scope.parentId,
+        returnRootId: props.returnRootId,
+        actionArgs: [
+          'prioritizePick',
+          String(item.id),
+          props.scope.scopeHash,
+          'prioritizeRoot',
+          props.parentId === null ? 'root' : String(props.parentId),
+        ],
+      }),
+    })),
+    actions: [
+      duelButton({
+        label: 'Skip',
+        className: null,
+        storyTargetId: null,
+        action: duelWebAction({
+          commandAlias: props.commandAlias,
+          parentId: props.scope.parentId,
+          returnRootId: props.returnRootId,
+          actionArgs: [
+            'prioritizeSkip',
+            props.scope.scopeHash,
+            'prioritizeRoot',
+            props.parentId === null ? 'root' : String(props.parentId),
+          ],
+        }),
+      }),
+      duelButton({
+        label: 'Quit',
+        className: null,
+        storyTargetId: null,
+        action: duelWebAction({
+          commandAlias: props.commandAlias,
+          parentId: props.parentId,
+          returnRootId: props.returnRootId,
+          actionArgs: ['quit'],
+        }),
+      }),
+    ],
   });
 }
 
 export function handleDuelWebAction(
   props: HandleDuelWebActionProps,
 ): WebNodeRoot {
-  const action = props.actionArgs[0] ?? 'choose';
+  const action = props.actionArgs[0] ?? 'prioritize';
   const returnRootId = parseReturnRootId(props.actionArgs);
+  const prioritizeRootId = parsePrioritizeRootId(props.actionArgs);
 
-  if (action === 'choose') {
-    return handleChoose(props);
+  if (action.startsWith('prioritize')) {
+    debugPrioritize('action', {
+      action,
+      parentId: props.parentId,
+      returnRootId,
+      prioritizeRootId,
+      actionArgs: props.actionArgs,
+    });
   }
 
-  if (action === 'start') {
-    const scope = props.actionArgs[1];
+  if (action === 'prioritize') {
+    return renderPrioritizeFromButton({
+      db: props.db,
+      commandAlias: props.commandAlias,
+      parentId: props.parentId,
+      returnRootId,
+      notice: null,
+    });
+  }
 
-    if (scope === 'children') {
-      return renderDuelScope({
+  if (action === 'prioritizePick') {
+    const championId = parsePositiveInteger(props.actionArgs[1]);
+    const scopeHash = props.actionArgs[2];
+
+    const flowRootId =
+      prioritizeRootId === undefined ? props.parentId : prioritizeRootId;
+
+    const scope = findNextChampionScope(props.db, flowRootId);
+
+    debugPrioritize('pick:before-validation', {
+      championId,
+      scopeHash,
+      flowRootId,
+      scope: describeScope(scope),
+    });
+
+    if (
+      championId === null ||
+      !scope ||
+      scope.scopeHash !== scopeHash ||
+      !scope.children.some((child) => child.id === championId)
+    ) {
+      debugPrioritize('pick:invalid', {
+        championId,
+        scopeHash,
+        flowRootId,
+        scope: describeScope(scope),
+      });
+
+      return renderPrioritizeScope({
+        db: props.db,
+        commandAlias: props.commandAlias,
+        parentId: flowRootId,
+        returnRootId,
+        notice:
+          'This priority question changed. Recalculated the next needed choice.',
+      });
+    }
+
+    setChampion({
+      db: props.db,
+      parentId: scope.parentId,
+      scopeHash: scope.scopeHash,
+      championId,
+      source: 'prioritize',
+    });
+
+    debugPrioritize('pick:set-champion', {
+      championId,
+      flowRootId,
+      parentId: scope.parentId,
+      scopeHash: scope.scopeHash,
+      nextScope: describeScope(findNextChampionScope(props.db, flowRootId)),
+    });
+
+    return renderPrioritizeScope({
+      db: props.db,
+      commandAlias: props.commandAlias,
+      parentId: flowRootId,
+      returnRootId,
+      notice: null,
+    });
+  }
+
+  if (action === 'prioritizeRefreshPick') {
+    const championId = parsePositiveInteger(props.actionArgs[1]);
+    const scopeHash = props.actionArgs[2];
+
+    const flowRootId =
+      prioritizeRootId === undefined ? props.parentId : prioritizeRootId;
+
+    const scope = getChampionScope(props.db, props.parentId);
+
+    debugPrioritize('refresh-pick:before-validation', {
+      championId,
+      scopeHash,
+      flowRootId,
+      scope: describeScope(scope),
+    });
+
+    if (
+      championId === null ||
+      scope.scopeHash !== scopeHash ||
+      !scope.children.some((child) => child.id === championId)
+    ) {
+      debugPrioritize('refresh-pick:invalid', {
+        championId,
+        scopeHash,
+        flowRootId,
+        scope: describeScope(scope),
+      });
+
+      return renderRefreshChampionPick({
         db: props.db,
         commandAlias: props.commandAlias,
         parentId: props.parentId,
+        flowRootId,
         returnRootId,
-        notice: null,
+        notice:
+          'This priority question changed. Recalculated the current choices.',
       });
     }
 
-    if (scope === 'siblings' && props.parentId !== null) {
-      const selected = getTodo(props.db, props.parentId);
+    resetChampionScope(props.db, scope.parentId);
 
-      return renderDuelScope({
-        db: props.db,
-        commandAlias: props.commandAlias,
-        parentId: selected?.parent_id ?? null,
-        returnRootId,
-        notice: null,
-      });
-    }
+    setChampion({
+      db: props.db,
+      parentId: scope.parentId,
+      scopeHash: scope.scopeHash,
+      championId,
+      source: 'prioritize',
+    });
+
+    debugPrioritize('refresh-pick:set-champion', {
+      championId,
+      flowRootId,
+      parentId: scope.parentId,
+      scopeHash: scope.scopeHash,
+      nextScope: describeScope(findNextChampionScope(props.db, flowRootId)),
+    });
+
+    return renderPrioritizeScope({
+      db: props.db,
+      commandAlias: props.commandAlias,
+      parentId: flowRootId,
+      returnRootId,
+      notice: null,
+    });
   }
 
-  if (action === 'answer') {
+  if (action === 'prioritizeKeepChampion') {
+    const championId = parsePositiveInteger(props.actionArgs[1]);
+    const scopeHash = props.actionArgs[2];
+
+    const flowRootId =
+      prioritizeRootId === undefined ? props.parentId : prioritizeRootId;
+
+    const stale = getStaleChampionCandidate(props.db, props.parentId);
+
+    debugPrioritize('keep:before-validation', {
+      championId,
+      scopeHash,
+      flowRootId,
+      staleScope: stale === null ? null : describeScope(stale.scope),
+      storedChampionId: stale?.stored.championId ?? null,
+    });
+
+    if (
+      championId === null ||
+      stale === null ||
+      stale.scope.scopeHash !== scopeHash ||
+      stale.champion.id !== championId
+    ) {
+      debugPrioritize('keep:invalid', {
+        championId,
+        scopeHash,
+        flowRootId,
+        staleScope: stale === null ? null : describeScope(stale.scope),
+      });
+
+      return renderPrioritizeScope({
+        db: props.db,
+        commandAlias: props.commandAlias,
+        parentId: flowRootId,
+        returnRootId,
+        notice:
+          'This priority question changed. Recalculated the next needed choice.',
+      });
+    }
+
+    keepChampion({
+      db: props.db,
+      parentId: stale.scope.parentId,
+      scopeHash: stale.scope.scopeHash,
+      championId,
+      source: 'prioritize',
+    });
+
+    debugPrioritize('keep:set-same-champion', {
+      championId,
+      flowRootId,
+      parentId: stale.scope.parentId,
+      oldScopeHash: stale.stored.scopeHash,
+      newScopeHash: stale.scope.scopeHash,
+      preservedParentComparisons: true,
+      nextScope: describeScope(findNextChampionScope(props.db, flowRootId)),
+    });
+
+    return renderPrioritizeScope({
+      db: props.db,
+      commandAlias: props.commandAlias,
+      parentId: flowRootId,
+      returnRootId,
+      notice: null,
+    });
+  }
+
+  if (action === 'prioritizePickNew') {
+    const scopeHash = props.actionArgs[1];
+
+    const flowRootId =
+      prioritizeRootId === undefined ? props.parentId : prioritizeRootId;
+
+    const stale = getStaleChampionCandidate(props.db, props.parentId);
+
+    debugPrioritize('pick-new:before-validation', {
+      scopeHash,
+      flowRootId,
+      staleScope: stale === null ? null : describeScope(stale.scope),
+      storedChampionId: stale?.stored.championId ?? null,
+    });
+
+    if (stale === null || stale.scope.scopeHash !== scopeHash) {
+      debugPrioritize('pick-new:invalid', {
+        scopeHash,
+        flowRootId,
+        staleScope: stale === null ? null : describeScope(stale.scope),
+      });
+
+      return renderPrioritizeScope({
+        db: props.db,
+        commandAlias: props.commandAlias,
+        parentId: flowRootId,
+        returnRootId,
+        notice:
+          'This priority question changed. Recalculated the next needed choice.',
+      });
+    }
+
+    if (props.parentId !== null) {
+      debugPrioritize('pick-new:show-pick', {
+        parentId: props.parentId,
+        flowRootId,
+        scope: describeScope(stale.scope),
+      });
+
+      return renderRefreshChampionPick({
+        db: props.db,
+        commandAlias: props.commandAlias,
+        parentId: props.parentId,
+        flowRootId,
+        returnRootId,
+        notice: null,
+      });
+    }
+
+    resetChampionScope(props.db, props.parentId);
+
+    debugPrioritize('pick-new:reset-for-tournament', {
+      parentId: props.parentId,
+      flowRootId,
+      scopeHash,
+    });
+
+    return renderPrioritizeScope({
+      db: props.db,
+      commandAlias: props.commandAlias,
+      parentId: flowRootId,
+      returnRootId,
+      notice: null,
+    });
+  }
+
+  if (action === 'prioritizeAnswer') {
     const winnerId = parsePositiveInteger(props.actionArgs[1]);
     const loserId = parsePositiveInteger(props.actionArgs[2]);
+    const scopeHash = props.actionArgs[3];
+
+    const flowRootId =
+      prioritizeRootId === undefined ? props.parentId : prioritizeRootId;
+
+    const scope = findNextChampionScope(props.db, flowRootId);
+
+    debugPrioritize('answer:before-validation', {
+      winnerId,
+      loserId,
+      scopeHash,
+      flowRootId,
+      scope: describeScope(scope),
+    });
 
     if (
       winnerId === null ||
       loserId === null ||
-      !isActiveSiblingInScope(props.db, props.parentId, winnerId) ||
-      !isActiveSiblingInScope(props.db, props.parentId, loserId)
+      !scope ||
+      scope.parentId !== flowRootId ||
+      scope.scopeHash !== scopeHash ||
+      !scope.children.some((child) => child.id === winnerId) ||
+      !scope.children.some((child) => child.id === loserId)
     ) {
-      return renderDuelScope({
+      debugPrioritize('answer:invalid', {
+        winnerId,
+        loserId,
+        scopeHash,
+        flowRootId,
+        scope: describeScope(scope),
+      });
+
+      return renderPrioritizeScope({
         db: props.db,
         commandAlias: props.commandAlias,
-        parentId: props.parentId,
+        parentId: flowRootId,
         returnRootId,
-        notice: 'That duel pair is no longer valid in this scope.',
+        notice:
+          'This priority duel changed. Recalculated the next needed choice.',
       });
     }
 
     if (wouldContradict(props.db, loserId, winnerId)) {
-      return renderDuelScope({
+      debugPrioritize('answer:contradiction', {
+        winnerId,
+        loserId,
+        flowRootId,
+      });
+
+      return renderPrioritizeScope({
         db: props.db,
         commandAlias: props.commandAlias,
-        parentId: props.parentId,
+        parentId: flowRootId,
         returnRootId,
         notice:
-          'That choice contradicts existing duel results, so it was skipped.',
+          'That choice contradicts existing priority results, so it was skipped.',
       });
     }
 
     recordComparison(props.db, winnerId, loserId);
 
-    return renderDuelScope({
+    debugPrioritize('answer:recorded', {
+      winnerId,
+      loserId,
+      flowRootId,
+      nextScope: describeScope(findNextChampionScope(props.db, flowRootId)),
+    });
+
+    return renderPrioritizeScope({
       db: props.db,
       commandAlias: props.commandAlias,
-      parentId: props.parentId,
+      parentId: flowRootId,
       returnRootId,
       notice: null,
     });
   }
 
-  if (action === 'skip') {
-    return renderDuelScope({
+  if (action === 'prioritizeDuelSkip') {
+    const aId = parsePositiveInteger(props.actionArgs[1]);
+    const bId = parsePositiveInteger(props.actionArgs[2]);
+    const scopeHash = props.actionArgs[3];
+
+    const flowRootId =
+      prioritizeRootId === undefined ? props.parentId : prioritizeRootId;
+
+    const scope = findNextChampionScope(props.db, flowRootId);
+
+    debugPrioritize('duel-skip:before-validation', {
+      aId,
+      bId,
+      scopeHash,
+      flowRootId,
+      scope: describeScope(scope),
+    });
+
+    if (
+      aId === null ||
+      bId === null ||
+      !scope ||
+      scope.parentId !== flowRootId ||
+      scope.scopeHash !== scopeHash ||
+      !scope.children.some((child) => child.id === aId) ||
+      !scope.children.some((child) => child.id === bId)
+    ) {
+      debugPrioritize('duel-skip:invalid', {
+        aId,
+        bId,
+        scopeHash,
+        flowRootId,
+        scope: describeScope(scope),
+      });
+
+      return renderPrioritizeScope({
+        db: props.db,
+        commandAlias: props.commandAlias,
+        parentId: flowRootId,
+        returnRootId,
+        notice:
+          'This priority duel changed. Recalculated the next needed choice.',
+      });
+    }
+
+    skipComparison({
+      db: props.db,
+      scopeHash: scope.scopeHash,
+      aId,
+      bId,
+    });
+
+    debugPrioritize('duel-skip:recorded', {
+      aId,
+      bId,
+      flowRootId,
+      scopeHash: scope.scopeHash,
+      nextScope: describeScope(findNextChampionScope(props.db, flowRootId)),
+    });
+
+    return renderPrioritizeScope({
       db: props.db,
       commandAlias: props.commandAlias,
-      parentId: props.parentId,
+      parentId: flowRootId,
       returnRootId,
-      notice: null,
+      notice: 'Skipped this duel for now.',
     });
   }
 
-  if (action === 'reset') {
-    resetComparisons(props.db, props.parentId);
+  if (action === 'prioritizeSkip') {
+    const scopeHash = props.actionArgs[1];
 
-    return renderDuelScope({
+    const flowRootId =
+      prioritizeRootId === undefined ? props.parentId : prioritizeRootId;
+
+    const scope = findNextChampionScope(props.db, flowRootId);
+
+    debugPrioritize('skip:before-validation', {
+      scopeHash,
+      flowRootId,
+      scope: describeScope(scope),
+    });
+
+    if (!scope || scope.scopeHash !== scopeHash) {
+      debugPrioritize('skip:invalid', {
+        scopeHash,
+        flowRootId,
+        scope: describeScope(scope),
+      });
+
+      return renderPrioritizeScope({
+        db: props.db,
+        commandAlias: props.commandAlias,
+        parentId: flowRootId,
+        returnRootId,
+        notice:
+          'This priority question changed. Recalculated the next needed choice.',
+      });
+    }
+
+    skipChampionScope({
+      db: props.db,
+      parentId: scope.parentId,
+      scopeHash: scope.scopeHash,
+    });
+
+    debugPrioritize('skip:set-skip', {
+      flowRootId,
+      parentId: scope.parentId,
+      scopeHash: scope.scopeHash,
+      nextScope: describeScope(findNextChampionScope(props.db, flowRootId)),
+    });
+
+    return renderPrioritizeScope({
       db: props.db,
       commandAlias: props.commandAlias,
-      parentId: props.parentId,
+      parentId: flowRootId,
       returnRootId,
-      notice: 'Duel results for this scope were reset.',
+      notice: 'Skipped this branch for now.',
+    });
+  }
+
+  if (action === 'setChampion') {
+    const championId = parsePositiveInteger(props.actionArgs[1]);
+    const scope = getChampionScope(props.db, props.parentId);
+
+    if (
+      championId === null ||
+      !scope.children.some((child) => child.id === championId)
+    ) {
+      return renderPrioritizeScope({
+        db: props.db,
+        commandAlias: props.commandAlias,
+        parentId: returnRootId,
+        returnRootId: returnRootId,
+        notice: 'That item is no longer active in this branch.',
+      });
+    }
+
+    setChampion({
+      db: props.db,
+      parentId: props.parentId,
+      scopeHash: scope.scopeHash,
+      championId,
+      source: 'manual',
+    });
+
+    return renderPrioritizeScope({
+      db: props.db,
+      commandAlias: props.commandAlias,
+      parentId: returnRootId,
+      returnRootId: returnRootId,
+      notice: 'Manual champion set. Continuing priority recalculation.',
     });
   }
 
@@ -562,5 +1354,11 @@ export function handleDuelWebAction(
     });
   }
 
-  return handleChoose(props);
+  return renderPrioritizeFromButton({
+    db: props.db,
+    commandAlias: props.commandAlias,
+    parentId: props.parentId,
+    returnRootId,
+    notice: null,
+  });
 }

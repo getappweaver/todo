@@ -8,9 +8,8 @@ import {
 import type { Todo, TodoWithWinStats } from '../../types/todos';
 
 import {
-  renderDuelComplete,
+  renderChampionQuestion,
   renderDuelQuestion,
-  renderDuelScopeChoice,
   type DuelButton,
   type DuelTodoItem,
 } from './component';
@@ -123,6 +122,9 @@ function toDuelStoryItem(item: Todo): DuelTodoItem {
   return {
     id: item.id,
     todo: item.todo,
+    status: item.status,
+    hasChampion: item.id === duelParentTodo.id,
+    selectedChampion: item.id === duelTodoA.id,
     children: duelItems
       .filter((child) => child.parent_id === item.id)
       .map(toDuelStoryItem),
@@ -160,7 +162,14 @@ function buildDuelQuestionStoryOutput(params: {
       storyTargetId: answerATargetId,
       action: duelStoryAction({
         alias: params.alias,
-        actionArgs: ['answer', String(params.a.id), String(params.b.id)],
+        actionArgs: [
+          'prioritizeAnswer',
+          String(params.a.id),
+          String(params.b.id),
+          'story-root-scope-hash',
+          'prioritizeRoot',
+          'root',
+        ],
       }),
     },
     b: {
@@ -169,7 +178,14 @@ function buildDuelQuestionStoryOutput(params: {
       storyTargetId: answerBTargetId,
       action: duelStoryAction({
         alias: params.alias,
-        actionArgs: ['answer', String(params.b.id), String(params.a.id)],
+        actionArgs: [
+          'prioritizeAnswer',
+          String(params.b.id),
+          String(params.a.id),
+          'story-root-scope-hash',
+          'prioritizeRoot',
+          'root',
+        ],
       }),
     },
     actions: [
@@ -177,13 +193,17 @@ function buildDuelQuestionStoryOutput(params: {
         label: 'Skip',
         className: null,
         storyTargetId: null,
-        action: duelStoryAction({ alias: params.alias, actionArgs: ['skip'] }),
-      }),
-      duelStoryButton({
-        label: 'Reset',
-        className: null,
-        storyTargetId: null,
-        action: duelStoryAction({ alias: params.alias, actionArgs: ['reset'] }),
+        action: duelStoryAction({
+          alias: params.alias,
+          actionArgs: [
+            'prioritizeDuelSkip',
+            String(params.a.id),
+            String(params.b.id),
+            'story-root-scope-hash',
+            'prioritizeRoot',
+            'root',
+          ],
+        }),
       }),
       duelStoryButton({
         label: 'Quit',
@@ -203,41 +223,38 @@ function buildDuelQuestionStoryOutput(params: {
   });
 }
 
-function buildDuelScopeChoiceStoryOutput(params: {
-  alias: string;
-}): WebNodeRoot {
-  return renderDuelScopeChoice({
-    commandAlias: params.alias,
-    selectedId: duelParentTodo.id,
-    returnRootId: null,
-    title: `Choose duel scope for ${duelParentTodo.todo}`,
-    childCount: 3,
-    siblingCount: 2,
-    childrenStoryTargetId: 'todo-duel-scope-children',
-    siblingsStoryTargetId: 'todo-duel-scope-siblings',
-  });
-}
-
-function buildDuelCompleteStoryOutput(params: { alias: string }): WebNodeRoot {
-  return renderDuelComplete({
+function buildChampionPickStoryOutput(params: { alias: string }): WebNodeRoot {
+  return renderChampionQuestion({
     commandAlias: params.alias,
     parentId: duelParentTodo.id,
     title: duelParentTodo.todo,
-    ranked: duelRankedItems
-      .filter((item) => item.parent_id === duelParentTodo.id)
-      .map(toDuelStoryItem),
+    notice: null,
+    context: {
+      parentPath: [duelParentTodo.todo],
+      currentParentId: duelParentTodo.id,
+      rootItems: [duelSiblingRootTodo, duelParentTodo].map(toDuelStoryItem),
+      defaultExpandedIds: [duelParentTodo.id],
+    },
+    choices: [duelTodoA, duelTodoB, duelTodoC].map((item, index) => ({
+      item: toDuelStoryItem(item),
+      storyTargetId: `todo-champion-pick-${index + 1}`,
+      action: duelStoryAction({
+        alias: params.alias,
+        actionArgs: [
+          'prioritizePick',
+          String(item.id),
+          'story-scope-hash',
+          'prioritizeRoot',
+          'root',
+        ],
+      }),
+    })),
     actions: [
       duelStoryButton({
-        label: 'Done',
+        label: 'Quit',
         className: null,
-        storyTargetId: 'todo-duel-done',
-        action: duelStoryAction({ alias: params.alias, actionArgs: ['quit'] }),
-      }),
-      duelStoryButton({
-        label: 'Reset and re-duel',
-        className: 'todo-duel-danger-button',
         storyTargetId: null,
-        action: duelStoryAction({ alias: params.alias, actionArgs: ['reset'] }),
+        action: duelStoryAction({ alias: params.alias, actionArgs: ['quit'] }),
       }),
     ],
   });
@@ -249,13 +266,13 @@ export function buildDuelStory(params: {
 }): StoryDefinition<TodoStoryState> {
   const story: StoryDefinition<TodoStoryState> = {
     id: 'todo-duel-prioritize',
-    title: 'Prioritize todos with duel',
+    title: 'Prioritize todos',
     description:
-      'Use the Todo duel widget to rank sibling tasks through interactive pairwise choices.',
+      'Use the Todo prioritize widget to pick branch champions and compare representatives.',
     showcase: {
       title: 'Interactive widgets can guide app workflows',
       description:
-        'Duel asks simple A/B questions, records comparisons, and turns a flat task list into a ranked priority order.',
+        'Prioritize asks for one branch champion, then uses focused A/B duels only when top-level representatives need comparison.',
       timing: { initialDelayMs: 900, stepDelayMs: 1900, storyDelayMs: 2600 },
     },
     kind: 'command',
@@ -276,29 +293,14 @@ export function buildDuelStory(params: {
           }).web,
         ],
         [`${params.alias}:duel`]: [
-          buildDuelScopeChoiceStoryOutput({ alias: params.alias }),
+          buildChampionPickStoryOutput({ alias: params.alias }),
           buildDuelQuestionStoryOutput({
             alias: params.alias,
             questionIndex: 1,
-            question: 'Question 1 of 3: which is more important?',
+            question: 'Champion tournament 1 of ~1: which should you do first?',
             a: duelTodoA,
-            b: duelTodoB,
+            b: duelSiblingRootTodo,
           }),
-          buildDuelQuestionStoryOutput({
-            alias: params.alias,
-            questionIndex: 2,
-            question: 'Question 2 of 3: which is more important?',
-            a: duelTodoA,
-            b: duelTodoC,
-          }),
-          buildDuelQuestionStoryOutput({
-            alias: params.alias,
-            questionIndex: 3,
-            question: 'Question 3 of 3: which is more important?',
-            a: duelTodoB,
-            b: duelTodoC,
-          }),
-          buildDuelCompleteStoryOutput({ alias: params.alias }),
           buildTodoListStoryCommandOutput({
             prefix: params.prefix,
             alias: params.alias,
@@ -324,7 +326,7 @@ export function buildDuelStory(params: {
         showcase: {
           title: 'Todo can ask focused interactive questions',
           description:
-            'The duel command compares sibling tasks one pair at a time instead of asking you to sort the whole list manually.',
+            'Prioritize asks for branch champions first, then compares representative paths only when needed.',
         },
       },
       {
@@ -345,73 +347,20 @@ export function buildDuelStory(params: {
       },
       {
         type: 'instruction',
-        text: 'Expand the root item first so the child tasks are visible before choosing a duel scope.',
-      },
-      {
-        type: 'focus_target',
-        target: {
-          type: 'web_node',
-          targetId: `todo-tree-toggle-${duelParentTodo.id}`,
-        },
-      },
-      {
-        type: 'wait_for_action',
-        match: {
-          type: 'target_clicked',
-          targetId: `todo-tree-toggle-${duelParentTodo.id}`,
-        },
-      },
-      {
-        type: 'instruction',
-        text: 'Hover the parent row to reveal its row actions.',
-      },
-      {
-        type: 'focus_target',
-        target: { type: 'web_node', targetId: `todo-row-${duelParentTodo.id}` },
-      },
-      {
-        type: 'wait_for_action',
-        match: {
-          type: 'target_hovered',
-          targetId: `todo-row-${duelParentTodo.id}`,
-        },
-      },
-      {
-        type: 'focus_target',
-        target: {
-          type: 'web_node',
-          targetId: `todo-row-actions-${duelParentTodo.id}`,
-        },
-      },
-      {
-        type: 'wait_for_action',
-        match: {
-          type: 'target_clicked',
-          targetId: `todo-row-actions-${duelParentTodo.id}`,
-        },
-      },
-      {
-        type: 'instruction',
-        text: 'Click Duel to start pairwise ranking for the child tasks.',
+        text: 'Click Prioritize to start from the next unresolved branch.',
         showcase: {
-          title: 'Commands can update in place for structured input',
+          title: 'Prioritize starts bottom-up',
           description:
-            'The widget replaces itself after each A/B choice so the ranking flow stays in one card.',
+            'The widget first asks for a branch champion, so categories stay stable while real tasks compete.',
         },
       },
       {
         type: 'focus_target',
-        target: {
-          type: 'web_node',
-          targetId: `todo-duel-${duelParentTodo.id}`,
-        },
+        target: { type: 'web_node', targetId: 'todo-prioritize' },
       },
       {
         type: 'wait_for_action',
-        match: {
-          type: 'target_clicked',
-          targetId: `todo-duel-${duelParentTodo.id}`,
-        },
+        match: { type: 'target_clicked', targetId: 'todo-prioritize' },
       },
       {
         type: 'wait_for_action',
@@ -423,18 +372,15 @@ export function buildDuelStory(params: {
       },
       {
         type: 'instruction',
-        text: 'Choose to duel the child tasks under the selected parent.',
+        text: 'Pick the branch champion for the landing demo work.',
       },
       {
         type: 'focus_target',
-        target: { type: 'web_node', targetId: 'todo-duel-scope-children' },
+        target: { type: 'web_node', targetId: 'todo-champion-pick-1' },
       },
       {
         type: 'wait_for_action',
-        match: {
-          type: 'target_clicked',
-          targetId: 'todo-duel-scope-children',
-        },
+        match: { type: 'target_clicked', targetId: 'todo-champion-pick-1' },
       },
       {
         type: 'wait_for_action',
@@ -446,11 +392,11 @@ export function buildDuelStory(params: {
       },
       {
         type: 'instruction',
-        text: 'Choose A for the first comparison.',
+        text: 'Now choose between the branch representative and the other top-level task.',
         showcase: {
-          title: 'Each answer records one comparison',
+          title: 'Top-level priority uses representatives',
           description:
-            'Simple A/B choices are enough for the plugin to build a ranking graph.',
+            'Once branches have champions, only those representative paths need A/B comparison.',
         },
       },
       {
@@ -470,35 +416,6 @@ export function buildDuelStory(params: {
         },
       },
       {
-        type: 'instruction',
-        text: 'Choose A again for the second comparison.',
-      },
-      {
-        type: 'focus_target',
-        target: { type: 'web_node', targetId: 'todo-duel-answer-2-A' },
-      },
-      {
-        type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'todo-duel-answer-2-A' },
-      },
-      {
-        type: 'wait_for_action',
-        match: {
-          type: 'command_completed',
-          command: params.alias,
-          subcommand: 'duel',
-        },
-      },
-      { type: 'instruction', text: 'Choose A for the final comparison.' },
-      {
-        type: 'focus_target',
-        target: { type: 'web_node', targetId: 'todo-duel-answer-3-A' },
-      },
-      {
-        type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'todo-duel-answer-3-A' },
-      },
-      {
         type: 'wait_for_action',
         match: {
           type: 'command_completed',
@@ -508,27 +425,11 @@ export function buildDuelStory(params: {
       },
       {
         type: 'instruction',
-        text: 'Click Done to return to the ranked todo list.',
+        text: 'The representative tournament returns to the list with the winning path highlighted.',
         showcase: {
-          title: 'Duel returns a scored list',
+          title: 'Priority winner returns to the list',
           description:
-            'When the ranking is complete, Done closes the duel view. The children are reordered and no longer marked unscored.',
-        },
-      },
-      {
-        type: 'focus_target',
-        target: { type: 'web_node', targetId: 'todo-duel-done' },
-      },
-      {
-        type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'todo-duel-done' },
-      },
-      {
-        type: 'wait_for_action',
-        match: {
-          type: 'command_completed',
-          command: params.alias,
-          subcommand: 'duel',
+            'When prioritize is complete, the list highlights the branch champions and the overall winner.',
         },
       },
       {

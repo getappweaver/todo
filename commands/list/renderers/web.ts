@@ -1,7 +1,13 @@
 import type { WebRenderContext } from '@src/system/render-context';
 import type { WebAction, WebNode, WebNodeRoot } from '@src/web/ui-schema';
 
-import type { ListItem, ListRepresentation } from '../representation/schema';
+import { buildTodoTree, renderTodoTreeItems } from '../../shared/tree-view';
+
+import type {
+  ListItem,
+  ListPriorityPrompt,
+  ListRepresentation,
+} from '../representation/schema';
 
 /** Matches `WebRefreshSchema` (list re-fetch after a mutating action). */
 type WebRefreshPayload = {
@@ -23,11 +29,6 @@ type BuildFocusedScopeWebNodeProps = {
    * `listInvocation` echo — pass `null`; unfocus still runs, without in-place list refresh.
    */
   refresh: WebRefreshPayload | null;
-};
-
-type TodoTreeNode = {
-  item: ListItem;
-  children: TodoTreeNode[];
 };
 
 type TodoListFilterStatus = 'pending' | 'in_progress' | 'done';
@@ -56,6 +57,10 @@ const DEFAULT_TODO_LIST_FILTER_STATUSES: TodoListFilterStatus[] = [
 const STATUS_FILTER_REVEAL_ID = 'todo-list-status-filter';
 const ROOT_ADD_REVEAL_ID = 'todo-inline-add-root';
 
+function text(value: string): WebNode {
+  return { type: 'text', value };
+}
+
 const todoListStylesheet = {
   id: 'todo-list-web',
   cssText: `
@@ -77,6 +82,17 @@ const todoListStylesheet = {
     .web-row.todo-item-row .web-text.todo-item-title {
       margin-top: 0.1rem;
     }
+
+    .web-row.todo-item-row--champion .web-text.todo-item-title {
+      color: var(--color-accent);
+      font-weight: 800;
+    }
+
+    .web-row.todo-item-row--winner .web-text.todo-item-title {
+      color: var(--color-accent);
+      font-weight: 900;
+    }
+
     .web-row.todo-item-row:hover .web-text.todo-item-title {
       font-weight: 600;
     }
@@ -132,6 +148,23 @@ const todoListStylesheet = {
       padding: 0.55rem;
       border-left: 2px solid color-mix(in srgb, var(--color-warning) 70%, transparent);
       background: color-mix(in srgb, var(--color-surface-alt) 92%, var(--color-warning) 8%);
+    }
+
+    .web-form.todo-inline-ask-prioritization {
+      margin: 0.2rem 0 0.45rem 0;
+      padding: 0.55rem;
+      border-left: 2px solid color-mix(in srgb, var(--color-accent) 72%, transparent);
+      background: color-mix(in srgb, var(--color-surface-alt) 90%, var(--color-accent) 10%);
+    }
+
+    .web-row.todo-priority-ask-actions {
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .web-button.todo-priority-ask-keep {
+      background: var(--color-accent);
+      color: #000;
     }
 
     .web-button.todo-new-root-button {
@@ -960,8 +993,8 @@ export function buildFocusedScopeWebNode(
   };
 }
 
-function scoreLabel(item: ListItem): string | undefined {
-  return item.winRate === null ? 'unscored' : undefined;
+function scoreLabel(): string | undefined {
+  return undefined;
 }
 
 function setTodoPendingAction(
@@ -1064,10 +1097,240 @@ function duelTodoAction(
     subcommand: 'duel',
     arguments: {
       parentId: item.id,
-      duelArgs: ['web', 'choose', 'returnRoot', String(returnRoot)],
+      duelArgs: [
+        'web',
+        'prioritize',
+        'prioritizeRoot',
+        String(returnRoot),
+        'returnRoot',
+        String(returnRoot),
+      ],
     },
     options: {},
     recordInTimeline: false,
+  };
+}
+
+function setChampionAction(
+  representation: ListRepresentation,
+  item: ListItem,
+): WebAction {
+  const returnRoot = representation.data.scope?.rootId ?? 'root';
+
+  return {
+    type: 'command',
+    command: representation.meta.command,
+    subcommand: 'duel',
+    arguments: {
+      ...(item.parentId === null ? {} : { parentId: item.parentId }),
+      duelArgs: [
+        'web',
+        'setChampion',
+        String(item.id),
+        'returnRoot',
+        String(returnRoot),
+      ],
+    },
+    options: {},
+    recordInTimeline: false,
+  };
+}
+
+function prioritizeTodoAction(representation: ListRepresentation): WebAction {
+  const rootId = representation.data.scope?.rootId ?? null;
+  const returnRoot = rootId ?? 'root';
+
+  return {
+    type: 'command',
+    command: representation.meta.command,
+    subcommand: 'duel',
+    arguments: {
+      ...(rootId === null ? {} : { parentId: rootId }),
+      duelArgs: ['web', 'prioritize', 'returnRoot', String(returnRoot)],
+    },
+    options: {},
+    recordInTimeline: false,
+  };
+}
+
+function priorityPromptDuelAction(props: {
+  representation: ListRepresentation;
+  prompt: ListPriorityPrompt;
+  duelArgs: string[];
+}): WebAction {
+  const rootId = props.representation.data.scope?.rootId ?? null;
+  const returnRoot = rootId ?? 'root';
+
+  return {
+    type: 'command',
+    command: props.representation.meta.command,
+    subcommand: 'duel',
+    arguments: {
+      ...(props.prompt.parentId === null
+        ? {}
+        : { parentId: props.prompt.parentId }),
+      duelArgs: [
+        'web',
+        ...props.duelArgs,
+        'prioritizeRoot',
+        String(returnRoot),
+        'returnRoot',
+        String(returnRoot),
+      ],
+    },
+    options: {},
+    recordInTimeline: false,
+  };
+}
+
+function priorityPromptKeepAction(
+  representation: ListRepresentation,
+  prompt: ListPriorityPrompt,
+): WebAction {
+  return priorityPromptDuelAction({
+    representation,
+    prompt,
+    duelArgs: [
+      'prioritizeKeepChampion',
+      String(prompt.championId),
+      prompt.scopeHash,
+    ],
+  });
+}
+
+function priorityPromptPickAction(
+  representation: ListRepresentation,
+  prompt: ListPriorityPrompt,
+): WebAction {
+  return priorityPromptDuelAction({
+    representation,
+    prompt,
+    duelArgs: ['prioritizePickNew', prompt.scopeHash],
+  });
+}
+
+function priorityPromptSkipAction(
+  representation: ListRepresentation,
+  prompt: ListPriorityPrompt,
+): WebAction {
+  return priorityPromptDuelAction({
+    representation,
+    prompt,
+    duelArgs: ['prioritizeSkip', prompt.scopeHash],
+  });
+}
+
+function buildPriorityPrompt(
+  representation: ListRepresentation,
+  prompt: ListPriorityPrompt,
+): WebNode {
+  const championPath = prompt.championPath.join(' → ');
+
+  return {
+    type: 'element',
+    tag: 'form',
+    props: {
+      className: 'web-form web-form--stacked todo-inline-ask-prioritization',
+      action: priorityPromptKeepAction(representation, prompt),
+    },
+    children: [
+      {
+        type: 'element',
+        tag: 'stack',
+        props: { gap: 'xs' },
+        children: [
+          {
+            type: 'element',
+            tag: 'text',
+            props: { weight: 'bold' },
+            children: [text(`Priority changed for ${prompt.parentTitle}.`)],
+          },
+          {
+            type: 'element',
+            tag: 'text',
+            props: { tone: 'muted', size: 'sm' },
+            children: [text(`Previous champion: ${championPath}`)],
+          },
+          {
+            type: 'element',
+            tag: 'row',
+            props: { className: 'todo-priority-ask-actions' },
+            children: [
+              {
+                type: 'element',
+                tag: 'button',
+                props: {
+                  label: 'Keep',
+                  className: 'todo-priority-ask-keep',
+                  action: priorityPromptKeepAction(representation, prompt),
+                },
+              },
+              {
+                type: 'element',
+                tag: 'button',
+                props: {
+                  label: 'Pick New',
+                  action: priorityPromptPickAction(representation, prompt),
+                },
+              },
+              {
+                type: 'element',
+                tag: 'button',
+                props: {
+                  label: 'Skip',
+                  action: priorityPromptSkipAction(representation, prompt),
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function priorityPromptBelongsToItem(
+  representation: ListRepresentation,
+  item: ListItem,
+): boolean {
+  return representation.data.priorityPrompt?.parentId === item.id;
+}
+
+function hasVisiblePriorityPromptTarget(
+  representation: ListRepresentation,
+): boolean {
+  const prompt = representation.data.priorityPrompt;
+
+  return (
+    prompt !== null &&
+    prompt.parentId !== null &&
+    representation.data.items.some((item) => item.id === prompt.parentId)
+  );
+}
+
+function needsPrioritization(representation: ListRepresentation): boolean {
+  return (
+    representation.data.items.filter((item) => item.status !== 'done').length >=
+    2
+  );
+}
+
+function buildPrioritizeButton(
+  representation: ListRepresentation,
+): WebNode | null {
+  if (!needsPrioritization(representation)) {
+    return null;
+  }
+
+  return {
+    type: 'element',
+    tag: 'button',
+    props: {
+      label: 'Prioritize',
+      className: 'todo-new-root-button',
+      storyTargetId: 'todo-prioritize',
+      action: prioritizeTodoAction(representation),
+    },
   };
 }
 
@@ -1178,9 +1441,17 @@ function renderTodoRowActionsMenu(
         type: 'element',
         tag: 'menuItem',
         props: {
-          label: 'Duel',
+          label: 'Prioritize here',
           storyTargetId: `todo-duel-${item.id}`,
           action: duelTodoAction(representation, item),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
+          label: 'Make top priority here',
+          action: setChampionAction(representation, item),
         },
       },
       {
@@ -1234,6 +1505,8 @@ function renderTodoItemRow(
   representation: ListRepresentation,
   item: ListItem,
 ): WebNode {
+  const title = `${item.isPriorityWinner ? '🏆 ' : ''}${item.text}`;
+
   const mainChildren: WebNode[] = [
     {
       type: 'element',
@@ -1247,7 +1520,7 @@ function renderTodoItemRow(
           tag: 'text',
           props: { weight: 'normal', className: 'todo-item-title' },
           children: [
-            { type: 'text', value: item.text },
+            { type: 'text', value: title },
             {
               type: 'element',
               tag: 'text',
@@ -1263,7 +1536,7 @@ function renderTodoItemRow(
           type: 'element',
           tag: 'badge',
           props: {
-            label: scoreLabel(item),
+            label: scoreLabel(),
             tone: 'muted',
             size: 'sm',
           },
@@ -1290,7 +1563,13 @@ function renderTodoItemRow(
     type: 'element',
     tag: 'row',
     props: {
-      className: 'todo-item-row',
+      className: [
+        'todo-item-row',
+        item.isChampion ? 'todo-item-row--champion' : null,
+        item.isPriorityWinner ? 'todo-item-row--winner' : null,
+      ]
+        .filter((value): value is string => value !== null)
+        .join(' '),
       storyTargetId: `todo-row-${item.id}`,
     },
     children: [
@@ -1357,112 +1636,14 @@ function renderTodoItemRow(
   };
 }
 
-function buildItemTree(
-  items: ListItem[],
-  startIndex = 0,
-): { nodes: TodoTreeNode[]; nextIndex: number } {
-  const roots: TodoTreeNode[] = [];
-  let index = startIndex;
-
-  while (index < items.length) {
-    const item = items[index];
-    const parentDepth = item.depth;
-    index += 1;
-
-    const children: TodoTreeNode[] = [];
-    while (index < items.length && items[index].depth > parentDepth) {
-      const childResult = buildItemTree(items, index);
-
-      if (childResult.nodes.length > 0) {
-        children.push(...childResult.nodes);
-      }
-
-      index = childResult.nextIndex;
-    }
-
-    roots.push({ item, children });
-
-    if (index < items.length && items[index].depth < parentDepth) {
-      break;
-    }
-  }
-
-  return { nodes: roots, nextIndex: index };
-}
-
-function renderTreeItem(
-  representation: ListRepresentation,
-  node: TodoTreeNode,
-): WebNode {
-  const item = node.item;
-
-  const filterText = [item.text, item.description, item.status, `#${item.id}`]
-    .filter(
-      (value): value is string => typeof value === 'string' && value.length > 0,
-    )
-    .join('\n');
-
-  return {
-    type: 'element',
-    tag: 'treeItem',
-    props: {
-      id: `todo-tree-item-${item.id}`,
-      ui: 'todo-tree-item',
-      filterText,
-      filterName: item.text,
-      filterPath: `${item.id}`,
-      defaultExpanded: false,
-      storyTargetId: `todo-tree-toggle-${item.id}`,
-    },
-    summary: {
-      type: 'element',
-      tag: 'stack',
-      props: {
-        gap: 'xs',
-      },
-      children: [
-        renderTodoItemRow(representation, item),
-        buildInlineTodoAddForm({
-          representation,
-          revealId: inlineAddRevealId(item.id, 'child'),
-          underParentId: item.id,
-          placeholder: 'New child todo',
-        }),
-        buildInlineTodoAddForm({
-          representation,
-          revealId: inlineAddRevealId(item.id, 'sibling'),
-          underParentId: item.parentId,
-          placeholder: 'New sibling todo',
-        }),
-        buildInlineTodoUpdateForm({ representation, item }),
-        buildInlineTodoMoveForm(representation, item),
-      ],
-    },
-    children: [
-      ...(node.children.length > 0
-        ? [
-            {
-              type: 'element' as const,
-              /** Use `stack`, not nested `tree`, so only the root list gets bulk expand/collapse controls. */
-              tag: 'stack' as const,
-              props: {
-                gap: 'xs' as const,
-                className: 'todo-tree-children',
-              },
-              children: node.children.map((child) =>
-                renderTreeItem(representation, child),
-              ),
-            },
-          ]
-        : []),
-    ],
-  };
-}
-
-function renderFlatTodoItem(
+function renderTreeItemSummary(
   representation: ListRepresentation,
   item: ListItem,
 ): WebNode {
+  const priorityPrompt = priorityPromptBelongsToItem(representation, item)
+    ? representation.data.priorityPrompt
+    : null;
+
   return {
     type: 'element',
     tag: 'stack',
@@ -1471,6 +1652,46 @@ function renderFlatTodoItem(
     },
     children: [
       renderTodoItemRow(representation, item),
+      ...(priorityPrompt === null
+        ? []
+        : [buildPriorityPrompt(representation, priorityPrompt)]),
+      buildInlineTodoAddForm({
+        representation,
+        revealId: inlineAddRevealId(item.id, 'child'),
+        underParentId: item.id,
+        placeholder: 'New child todo',
+      }),
+      buildInlineTodoAddForm({
+        representation,
+        revealId: inlineAddRevealId(item.id, 'sibling'),
+        underParentId: item.parentId,
+        placeholder: 'New sibling todo',
+      }),
+      buildInlineTodoUpdateForm({ representation, item }),
+      buildInlineTodoMoveForm(representation, item),
+    ],
+  };
+}
+
+function renderFlatTodoItem(
+  representation: ListRepresentation,
+  item: ListItem,
+): WebNode {
+  const priorityPrompt = priorityPromptBelongsToItem(representation, item)
+    ? representation.data.priorityPrompt
+    : null;
+
+  return {
+    type: 'element',
+    tag: 'stack',
+    props: {
+      gap: 'xs',
+    },
+    children: [
+      renderTodoItemRow(representation, item),
+      ...(priorityPrompt === null
+        ? []
+        : [buildPriorityPrompt(representation, priorityPrompt)]),
       buildInlineTodoAddForm({
         representation,
         revealId: inlineAddRevealId(item.id, 'child'),
@@ -1504,6 +1725,21 @@ export function renderListWeb(
     );
   }
 
+  const prioritizeButton = buildPrioritizeButton(representation);
+
+  if (prioritizeButton !== null) {
+    treeChildren.push(prioritizeButton);
+  }
+
+  if (
+    representation.data.priorityPrompt !== null &&
+    !hasVisiblePriorityPromptTarget(representation)
+  ) {
+    treeChildren.push(
+      buildPriorityPrompt(representation, representation.data.priorityPrompt),
+    );
+  }
+
   treeChildren.push(
     buildStatusFilterPanel(
       representation,
@@ -1514,7 +1750,10 @@ export function renderListWeb(
   );
 
   if (representation.data.view === 'tree') {
-    const tree = buildItemTree(representation.data.items).nodes;
+    const tree = buildTodoTree({
+      items: representation.data.items,
+      startIndex: 0,
+    }).nodes;
 
     if (tree.length === 0) {
       treeChildren.push(buildEmptyTodoListPrompt(representation));
@@ -1543,7 +1782,15 @@ export function renderListWeb(
             },
           ],
         },
-        children: tree.map((node) => renderTreeItem(representation, node)),
+        children: renderTodoTreeItems({
+          nodes: tree,
+          renderSummary: (item) => renderTreeItemSummary(representation, item),
+          itemIdPrefix: 'todo-tree-item-',
+          itemUi: 'todo-tree-item',
+          childrenClassName: 'todo-tree-children',
+          defaultExpandedIds: new Set(),
+          storyTargetPrefix: 'todo-tree-toggle-',
+        }),
       });
     }
   } else {

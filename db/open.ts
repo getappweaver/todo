@@ -21,12 +21,54 @@ function migrateTodoSchema(db: Database): void {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS todo_champions (
+      scope_key   TEXT PRIMARY KEY,
+      parent_id   INTEGER REFERENCES todos(id) ON DELETE CASCADE,
+      scope_hash  TEXT NOT NULL,
+      champion_id INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+      source      TEXT NOT NULL DEFAULT 'manual',
+      updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS todo_champion_skips (
+      scope_key  TEXT PRIMARY KEY,
+      parent_id  INTEGER REFERENCES todos(id) ON DELETE CASCADE,
+      scope_hash TEXT NOT NULL,
+      skipped_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS todo_comparison_skips (
+      scope_hash TEXT NOT NULL,
+      low_id     INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+      high_id    INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+      skipped_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+      PRIMARY KEY (scope_hash, low_id, high_id)
+    )
+  `);
+
   db.run(
     'CREATE INDEX IF NOT EXISTS idx_comparisons_winner ON todo_comparisons(winner_id)',
   );
 
   db.run(
     'CREATE INDEX IF NOT EXISTS idx_comparisons_loser ON todo_comparisons(loser_id)',
+  );
+
+  db.run(
+    'CREATE INDEX IF NOT EXISTS idx_todo_champions_parent ON todo_champions(parent_id)',
+  );
+
+  db.run(
+    'CREATE INDEX IF NOT EXISTS idx_todo_champion_skips_parent ON todo_champion_skips(parent_id)',
+  );
+
+  db.run(
+    'CREATE INDEX IF NOT EXISTS idx_todo_comparison_skips_scope ON todo_comparison_skips(scope_hash)',
   );
 
   const cols = db.prepare('PRAGMA table_info(todos)').all() as {

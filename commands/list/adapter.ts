@@ -35,6 +35,7 @@ export function adaptListCommand(
             arguments: { ...params.parsed.arguments },
             options: { ...params.parsed.options },
           },
+          priorityPrompt: null,
           items: [],
         }),
         { prefix: params.prefix },
@@ -54,6 +55,7 @@ export function adaptListCommand(
       arguments: { ...params.parsed.arguments },
       options: { ...params.parsed.options },
     },
+    priorityPrompt: result.priorityPrompt,
     items: result.items,
   });
 

@@ -3,6 +3,12 @@ import type { Database } from 'bun:sqlite';
 import type { Todo, TodoWithWinStats } from '../../types/todos';
 
 import {
+  findNextChampionScope,
+  getChampionScope,
+  getStaleChampionCandidate,
+} from '../duel/db';
+
+import {
   getFocusId,
   getTodo,
   isActiveListTodo,
@@ -14,6 +20,8 @@ import {
   type ListStatusFilter,
   ListStatusFilterSchema,
 } from './status';
+
+const TODO_PRIORITIZE_DEBUG = process.env.TODO_PRIORITIZE_DEBUG === '1';
 
 function treeDepth(db: Database, todo: Todo): number {
   let depth = 0;
@@ -134,6 +142,15 @@ function filterTodosWithTreeContext(
   return todos.filter((todo) => included.has(todo.id));
 }
 
+type PriorityPrompt = {
+  parentId: number | null;
+  parentTitle: string;
+  championId: number;
+  championTitle: string;
+  championPath: string[];
+  scopeHash: string;
+};
+
 export type ListCommandResult =
   | {
       type: 'error';
@@ -151,6 +168,7 @@ export type ListCommandResult =
       scope: { rootId: number; rootTitle: string } | null;
       view: 'tree' | 'flat';
       showDescriptions: boolean;
+      priorityPrompt: PriorityPrompt | null;
       items: Array<{
         id: number;
         parentId: number | null;
@@ -161,8 +179,98 @@ export type ListCommandResult =
         wins: number;
         losses: number;
         winRate: number | null;
+        isChampion: boolean;
+        isPriorityWinner: boolean;
       }>;
     };
+
+function championViewState(params: {
+  db: Database;
+  todos: Todo[];
+  rootId: number | null;
+}): { championIds: Set<number>; priorityWinnerId: number | null } {
+  const championIds = new Set<number>();
+  const parentIds = new Set<number | null>();
+
+  for (const todo of params.todos) {
+    parentIds.add(todo.parent_id ?? null);
+  }
+
+  if (params.rootId !== null) {
+    parentIds.add(params.rootId);
+  }
+
+  for (const parentId of parentIds) {
+    const scope = getChampionScope(params.db, parentId);
+
+    if (scope.currentChampionId !== null) {
+      championIds.add(scope.currentChampionId);
+    }
+  }
+
+  const rootScope = getChampionScope(params.db, params.rootId);
+
+  const rootChampion =
+    rootScope.currentChampionId === null
+      ? null
+      : (rootScope.children.find(
+          (child) => child.id === rootScope.currentChampionId,
+        ) ?? null);
+
+  const priorityWinnerId =
+    rootChampion === null
+      ? null
+      : (rootChampion.championPath[rootChampion.championPath.length - 1]?.id ??
+        rootChampion.id);
+
+  return { championIds, priorityWinnerId };
+}
+
+function priorityPromptForRoot(params: {
+  db: Database;
+  rootId: number | null;
+}): PriorityPrompt | null {
+  const nextScope = findNextChampionScope(params.db, params.rootId);
+
+  if (nextScope === null) {
+    return null;
+  }
+
+  const stale = getStaleChampionCandidate(params.db, nextScope.parentId);
+
+  if (stale === null || stale.scope.scopeHash !== nextScope.scopeHash) {
+    return null;
+  }
+
+  const parent =
+    stale.scope.parentId === null
+      ? null
+      : getTodo(params.db, stale.scope.parentId);
+
+  const prompt = {
+    parentId: stale.scope.parentId,
+    parentTitle: parent?.todo ?? 'top-level todos',
+    championId: stale.champion.id,
+    championTitle: stale.champion.todo,
+    championPath: stale.champion.championPath.map((item) => item.todo),
+    scopeHash: stale.scope.scopeHash,
+  };
+
+  if (TODO_PRIORITIZE_DEBUG) {
+    console.log(
+      '[todo:prioritize] list-stale-prompt',
+      JSON.stringify({
+        parentId: prompt.parentId,
+        parentTitle: prompt.parentTitle,
+        championId: prompt.championId,
+        oldScopeHash: stale.stored.scopeHash,
+        newScopeHash: stale.scope.scopeHash,
+      }),
+    );
+  }
+
+  return prompt;
+}
 
 export function handleListCommand(params: {
   prefix: string;
@@ -243,11 +351,20 @@ export function handleListCommand(params: {
     };
   }
 
+  const champions = championViewState({
+    db: params.db,
+    todos,
+    rootId,
+  });
+
+  const priorityPrompt = priorityPromptForRoot({ db: params.db, rootId });
+
   return {
     type: 'success',
     scope,
     view: flat || level !== null ? 'flat' : 'tree',
     showDescriptions,
+    priorityPrompt,
     items: todos.map((todo: TodoWithWinStats) => ({
       id: todo.id,
       parentId:
@@ -262,6 +379,8 @@ export function handleListCommand(params: {
       wins: todo.wins ?? 0,
       losses: todo.losses ?? 0,
       winRate: todo.win_rate ?? null,
+      isChampion: champions.championIds.has(todo.id),
+      isPriorityWinner: champions.priorityWinnerId === todo.id,
     })),
   };
 }

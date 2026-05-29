@@ -15,6 +15,35 @@ export type NextPair = {
   bTitle: string;
 };
 
+export type ChampionSource = 'manual' | 'prioritize';
+
+export type ChampionRecord = {
+  scopeKey: string;
+  parentId: number | null;
+  scopeHash: string;
+  championId: number;
+  source: ChampionSource;
+  updatedAt: number;
+};
+
+export type ChampionTodo = RankedTodo & {
+  championLeaf: RankedTodo;
+  championPath: RankedTodo[];
+};
+
+export type ChampionScope = {
+  parentId: number | null;
+  scopeHash: string;
+  children: ChampionTodo[];
+  currentChampionId: number | null;
+};
+
+export type StaleChampionCandidate = {
+  scope: ChampionScope;
+  champion: ChampionTodo;
+  stored: ChampionRecord;
+};
+
 export type DuelPromptOption = {
   label: string;
   value: string;

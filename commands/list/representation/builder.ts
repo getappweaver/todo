@@ -12,6 +12,7 @@ export function createListRepresentation(params: {
     arguments: Record<string, unknown>;
     options: Record<string, unknown>;
   };
+  priorityPrompt: ListRepresentation['data']['priorityPrompt'];
   items: z.input<typeof ListItemSchema>[];
 }): ListRepresentation {
   return {
@@ -26,6 +27,7 @@ export function createListRepresentation(params: {
       view: params.view,
       showDescriptions: params.showDescriptions,
       listInvocation: params.listInvocation,
+      priorityPrompt: params.priorityPrompt,
       items: params.items,
     },
   };
