@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-import type { ListItemSchema, ListRepresentation } from './schema';
+import { ListItemSchema, type ListRepresentation } from './schema';
 
 export function createListRepresentation(params: {
   command: string;
@@ -28,7 +28,7 @@ export function createListRepresentation(params: {
       showDescriptions: params.showDescriptions,
       listInvocation: params.listInvocation,
       priorityPrompt: params.priorityPrompt,
-      items: params.items,
+      items: params.items.map((item) => ListItemSchema.parse(item)),
     },
   };
 }

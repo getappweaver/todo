@@ -205,6 +205,10 @@ type GetNextPairForScopeProps = {
   skipScopeHash: string | null;
 };
 
+type GetNextTournamentPairForScopeProps = GetNextPairForScopeProps & {
+  ranked: RankedTodo[] | null;
+};
+
 export function getNextPairForScope({
   db,
   parentId,
@@ -296,14 +300,15 @@ export function getNextTournamentPairForScope({
   db,
   parentId,
   skipScopeHash,
-}: GetNextPairForScopeProps): NextPair | null {
-  const ranked = getRankedSiblings(db, parentId);
+  ranked,
+}: GetNextTournamentPairForScopeProps): NextPair | null {
+  const rankedSiblings = ranked ?? getRankedSiblings(db, parentId);
 
-  if (ranked.length < 2) {
+  if (rankedSiblings.length < 2) {
     return null;
   }
 
-  const ids = ranked.map((item) => item.id);
+  const ids = rankedSiblings.map((item) => item.id);
   const idSet = new Set(ids);
   const placeholders = ids.map(() => '?').join(',');
 
@@ -351,33 +356,33 @@ export function getNextTournamentPairForScope({
   }
 
   const reachById = new Map<number, Set<number>>(
-    ranked.map((item) => [
+    rankedSiblings.map((item) => [
       item.id,
       reachableIdsFrom({ startId: item.id, adjacency }),
     ]),
   );
 
-  const champion = ranked.find(
-    (item) => (reachById.get(item.id)?.size ?? 0) >= ranked.length - 1,
+  const champion = rankedSiblings.find(
+    (item) => (reachById.get(item.id)?.size ?? 0) >= rankedSiblings.length - 1,
   );
 
   if (champion) {
     return null;
   }
 
-  const leaders = [...ranked].sort((a, b) => {
+  const leaders = [...rankedSiblings].sort((a, b) => {
     const reachDelta =
       (reachById.get(b.id)?.size ?? 0) - (reachById.get(a.id)?.size ?? 0);
 
     return reachDelta !== 0
       ? reachDelta
-      : ranked.indexOf(a) - ranked.indexOf(b);
+      : rankedSiblings.indexOf(a) - rankedSiblings.indexOf(b);
   });
 
   for (const leader of leaders) {
     const reachable = reachById.get(leader.id) ?? new Set<number>();
 
-    const challenger = ranked.find(
+    const challenger = rankedSiblings.find(
       (item) =>
         item.id !== leader.id &&
         !reachable.has(item.id) &&
@@ -590,6 +595,33 @@ export function getChampionPath(db: Database, item: RankedTodo): RankedTodo[] {
   return [item, ...championChild.championPath];
 }
 
+function getChampionPathOrNull(
+  db: Database,
+  item: RankedTodo,
+): RankedTodo[] | null {
+  const childScope = getChampionScope(db, item.id);
+
+  const stored = getValidStoredChampion({
+    db,
+    parentId: item.id,
+    scopeHash: childScope.scopeHash,
+  });
+
+  const storedChild = stored
+    ? childScope.children.find((child) => child.id === stored.championId)
+    : undefined;
+
+  const championChild =
+    storedChild ??
+    (childScope.children.length === 1 ? childScope.children[0] : null);
+
+  if (championChild) {
+    return [item, ...championChild.championPath];
+  }
+
+  return childScope.children.length === 0 ? [item] : null;
+}
+
 export function getChampionScope(
   db: Database,
   parentId: number | null,
@@ -613,6 +645,15 @@ export function getChampionScope(
     children,
     currentChampionId: stored?.championId ?? null,
   };
+}
+
+export function getResolvedChampionChildren(
+  db: Database,
+  scope: ChampionScope,
+): ChampionTodo[] {
+  return scope.children.filter(
+    (child) => getChampionPathOrNull(db, child) !== null,
+  );
 }
 
 export function getStaleChampionCandidate(
@@ -644,7 +685,7 @@ export function findNextChampionScope(
 ): ChampionScope | null {
   const scope = getChampionScope(db, parentId);
 
-  for (const child of scope.children) {
+  for (const child of getRankedSiblings(db, parentId)) {
     const unresolved = findNextChampionScope(db, child.id);
 
     if (unresolved !== null) {

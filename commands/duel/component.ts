@@ -15,10 +15,14 @@ export type DuelTodoItem = {
   children: DuelTodoItem[];
 };
 
-type DuelTreeViewItem = TodoTreeViewItem;
+type DuelTreeViewItem = TodoTreeViewItem & {
+  hasChampion: boolean;
+  selectedChampion: boolean;
+};
 
 type ChampionTreeViewItem = TodoTreeViewItem & {
   pickAction: WebAction | null;
+  pickLabel: string | null;
   storyTargetId: string | null;
   currentBranch: boolean;
   hasChampion: boolean;
@@ -41,6 +45,7 @@ export type DuelChoice = {
 
 export type ChampionChoice = {
   item: DuelTodoItem;
+  label: string;
   action: WebAction;
   storyTargetId: string | null;
 };
@@ -254,6 +259,7 @@ function championChoiceToTreeNode(
       description: null,
       status: choice.item.status,
       pickAction: choice.action,
+      pickLabel: choice.label,
       storyTargetId: choice.storyTargetId,
       currentBranch: false,
       hasChampion: choice.item.hasChampion,
@@ -277,6 +283,7 @@ function championChildToTreeNode(
       description: null,
       status: item.status,
       pickAction: null,
+      pickLabel: null,
       storyTargetId: null,
       currentBranch: false,
       hasChampion: item.hasChampion,
@@ -349,7 +356,7 @@ function renderChampionTreeItemSummary(item: ChampionTreeViewItem): WebNode {
               type: 'element' as const,
               tag: 'button' as const,
               props: {
-                label: 'Pick',
+                label: item.pickLabel ?? 'Pick',
                 className: 'todo-duel-pick-button todo-champion-pick-row',
                 storyTargetId: item.storyTargetId ?? undefined,
                 action: item.pickAction,
@@ -483,6 +490,7 @@ function currentBranchTreeNode(props: {
       description: null,
       status: props.parent.status,
       pickAction: null,
+      pickLabel: null,
       storyTargetId: null,
       currentBranch: true,
       hasChampion: props.parent.hasChampion,
@@ -520,6 +528,7 @@ function championContextTreeNodes(props: {
             description: null,
             status: item.status,
             pickAction: null,
+            pickLabel: null,
             storyTargetId: null,
             currentBranch: false,
             hasChampion: item.hasChampion,

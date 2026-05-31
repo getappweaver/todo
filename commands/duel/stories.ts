@@ -237,6 +237,7 @@ function buildChampionPickStoryOutput(params: { alias: string }): WebNodeRoot {
     },
     choices: [duelTodoA, duelTodoB, duelTodoC].map((item, index) => ({
       item: toDuelStoryItem(item),
+      label: 'Pick',
       storyTargetId: `todo-champion-pick-${index + 1}`,
       action: duelStoryAction({
         alias: params.alias,

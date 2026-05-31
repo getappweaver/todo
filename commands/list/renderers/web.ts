@@ -3,11 +3,7 @@ import type { WebAction, WebNode, WebNodeRoot } from '@src/web/ui-schema';
 
 import { buildTodoTree, renderTodoTreeItems } from '../../shared/tree-view';
 
-import type {
-  ListItem,
-  ListPriorityPrompt,
-  ListRepresentation,
-} from '../representation/schema';
+import type { ListItem, ListRepresentation } from '../representation/schema';
 
 /** Matches `WebRefreshSchema` (list re-fetch after a mutating action). */
 type WebRefreshPayload = {
@@ -56,10 +52,6 @@ const DEFAULT_TODO_LIST_FILTER_STATUSES: TodoListFilterStatus[] = [
 
 const STATUS_FILTER_REVEAL_ID = 'todo-list-status-filter';
 const ROOT_ADD_REVEAL_ID = 'todo-inline-add-root';
-
-function text(value: string): WebNode {
-  return { type: 'text', value };
-}
 
 const todoListStylesheet = {
   id: 'todo-list-web',
@@ -290,6 +282,23 @@ function listRefresh(representation: ListRepresentation): WebRefreshPayload {
   };
 }
 
+function prioritizeRefresh(
+  representation: ListRepresentation,
+): WebRefreshPayload {
+  const rootId = representation.data.scope?.rootId ?? null;
+  const returnRoot = rootId ?? 'root';
+
+  return {
+    command: representation.meta.command,
+    subcommand: 'duel',
+    arguments: {
+      ...(rootId === null ? {} : { parentId: rootId }),
+      duelArgs: ['web', 'prioritizeFlow', 'returnRoot', String(returnRoot)],
+    },
+    options: {},
+  };
+}
+
 function rowHighlightTargetId(itemId: number): string {
   return `todo-row-${itemId}`;
 }
@@ -299,7 +308,7 @@ function listRefreshHighlightingCreatedTodo(
   underParentId: number | null,
 ): WebRefreshPayload {
   return {
-    ...listRefresh(representation),
+    ...prioritizeRefresh(representation),
     highlightTargetIdFromOutput: {
       pattern: 'Todo created: #(\\d+)',
       template: 'todo-row-$1',
@@ -315,7 +324,7 @@ function listRefreshHighlightingTodo(
   itemId: number,
 ): WebRefreshPayload {
   return {
-    ...listRefresh(representation),
+    ...prioritizeRefresh(representation),
     highlightTargetIds: [rowHighlightTargetId(itemId)],
   };
 }
@@ -1040,7 +1049,7 @@ function setTodoDoneAction(
 ): WebAction {
   const refresh =
     item.parentId === null
-      ? listRefresh(representation)
+      ? prioritizeRefresh(representation)
       : listRefreshHighlightingTodo(representation, item.parentId);
 
   return {
@@ -1066,7 +1075,7 @@ function deleteTodoAction(
     options: {},
     refresh:
       item.parentId === null
-        ? listRefresh(representation)
+        ? prioritizeRefresh(representation)
         : listRefreshHighlightingTodo(representation, item.parentId),
   };
 }
@@ -1099,7 +1108,7 @@ function duelTodoAction(
       parentId: item.id,
       duelArgs: [
         'web',
-        'prioritize',
+        'prioritizeFlow',
         'prioritizeRoot',
         String(returnRoot),
         'returnRoot',
@@ -1146,166 +1155,11 @@ function prioritizeTodoAction(representation: ListRepresentation): WebAction {
     subcommand: 'duel',
     arguments: {
       ...(rootId === null ? {} : { parentId: rootId }),
-      duelArgs: ['web', 'prioritize', 'returnRoot', String(returnRoot)],
+      duelArgs: ['web', 'prioritizeFlow', 'returnRoot', String(returnRoot)],
     },
     options: {},
     recordInTimeline: false,
   };
-}
-
-function priorityPromptDuelAction(props: {
-  representation: ListRepresentation;
-  prompt: ListPriorityPrompt;
-  duelArgs: string[];
-}): WebAction {
-  const rootId = props.representation.data.scope?.rootId ?? null;
-  const returnRoot = rootId ?? 'root';
-
-  return {
-    type: 'command',
-    command: props.representation.meta.command,
-    subcommand: 'duel',
-    arguments: {
-      ...(props.prompt.parentId === null
-        ? {}
-        : { parentId: props.prompt.parentId }),
-      duelArgs: [
-        'web',
-        ...props.duelArgs,
-        'prioritizeRoot',
-        String(returnRoot),
-        'returnRoot',
-        String(returnRoot),
-      ],
-    },
-    options: {},
-    recordInTimeline: false,
-  };
-}
-
-function priorityPromptKeepAction(
-  representation: ListRepresentation,
-  prompt: ListPriorityPrompt,
-): WebAction {
-  return priorityPromptDuelAction({
-    representation,
-    prompt,
-    duelArgs: [
-      'prioritizeKeepChampion',
-      String(prompt.championId),
-      prompt.scopeHash,
-    ],
-  });
-}
-
-function priorityPromptPickAction(
-  representation: ListRepresentation,
-  prompt: ListPriorityPrompt,
-): WebAction {
-  return priorityPromptDuelAction({
-    representation,
-    prompt,
-    duelArgs: ['prioritizePickNew', prompt.scopeHash],
-  });
-}
-
-function priorityPromptSkipAction(
-  representation: ListRepresentation,
-  prompt: ListPriorityPrompt,
-): WebAction {
-  return priorityPromptDuelAction({
-    representation,
-    prompt,
-    duelArgs: ['prioritizeSkip', prompt.scopeHash],
-  });
-}
-
-function buildPriorityPrompt(
-  representation: ListRepresentation,
-  prompt: ListPriorityPrompt,
-): WebNode {
-  const championPath = prompt.championPath.join(' → ');
-
-  return {
-    type: 'element',
-    tag: 'form',
-    props: {
-      className: 'web-form web-form--stacked todo-inline-ask-prioritization',
-      action: priorityPromptKeepAction(representation, prompt),
-    },
-    children: [
-      {
-        type: 'element',
-        tag: 'stack',
-        props: { gap: 'xs' },
-        children: [
-          {
-            type: 'element',
-            tag: 'text',
-            props: { weight: 'bold' },
-            children: [text(`Priority changed for ${prompt.parentTitle}.`)],
-          },
-          {
-            type: 'element',
-            tag: 'text',
-            props: { tone: 'muted', size: 'sm' },
-            children: [text(`Previous champion: ${championPath}`)],
-          },
-          {
-            type: 'element',
-            tag: 'row',
-            props: { className: 'todo-priority-ask-actions' },
-            children: [
-              {
-                type: 'element',
-                tag: 'button',
-                props: {
-                  label: 'Keep',
-                  className: 'todo-priority-ask-keep',
-                  action: priorityPromptKeepAction(representation, prompt),
-                },
-              },
-              {
-                type: 'element',
-                tag: 'button',
-                props: {
-                  label: 'Pick New',
-                  action: priorityPromptPickAction(representation, prompt),
-                },
-              },
-              {
-                type: 'element',
-                tag: 'button',
-                props: {
-                  label: 'Skip',
-                  action: priorityPromptSkipAction(representation, prompt),
-                },
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function priorityPromptBelongsToItem(
-  representation: ListRepresentation,
-  item: ListItem,
-): boolean {
-  return representation.data.priorityPrompt?.parentId === item.id;
-}
-
-function hasVisiblePriorityPromptTarget(
-  representation: ListRepresentation,
-): boolean {
-  const prompt = representation.data.priorityPrompt;
-
-  return (
-    prompt !== null &&
-    prompt.parentId !== null &&
-    representation.data.items.some((item) => item.id === prompt.parentId)
-  );
 }
 
 function needsPrioritization(representation: ListRepresentation): boolean {
@@ -1640,10 +1494,6 @@ function renderTreeItemSummary(
   representation: ListRepresentation,
   item: ListItem,
 ): WebNode {
-  const priorityPrompt = priorityPromptBelongsToItem(representation, item)
-    ? representation.data.priorityPrompt
-    : null;
-
   return {
     type: 'element',
     tag: 'stack',
@@ -1652,9 +1502,6 @@ function renderTreeItemSummary(
     },
     children: [
       renderTodoItemRow(representation, item),
-      ...(priorityPrompt === null
-        ? []
-        : [buildPriorityPrompt(representation, priorityPrompt)]),
       buildInlineTodoAddForm({
         representation,
         revealId: inlineAddRevealId(item.id, 'child'),
@@ -1677,10 +1524,6 @@ function renderFlatTodoItem(
   representation: ListRepresentation,
   item: ListItem,
 ): WebNode {
-  const priorityPrompt = priorityPromptBelongsToItem(representation, item)
-    ? representation.data.priorityPrompt
-    : null;
-
   return {
     type: 'element',
     tag: 'stack',
@@ -1689,9 +1532,6 @@ function renderFlatTodoItem(
     },
     children: [
       renderTodoItemRow(representation, item),
-      ...(priorityPrompt === null
-        ? []
-        : [buildPriorityPrompt(representation, priorityPrompt)]),
       buildInlineTodoAddForm({
         representation,
         revealId: inlineAddRevealId(item.id, 'child'),
@@ -1729,15 +1569,6 @@ export function renderListWeb(
 
   if (prioritizeButton !== null) {
     treeChildren.push(prioritizeButton);
-  }
-
-  if (
-    representation.data.priorityPrompt !== null &&
-    !hasVisiblePriorityPromptTarget(representation)
-  ) {
-    treeChildren.push(
-      buildPriorityPrompt(representation, representation.data.priorityPrompt),
-    );
   }
 
   treeChildren.push(

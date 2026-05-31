@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.3.1] - 2026-05-31
+
+- fix: pick moved from list to duel (be2ebfc)
+
 ## [v5.3.0] - 2026-05-29
 
-- feat: add todo prioritization flow (0e273d7)
+- feat: add todo prioritization flow (0754777)
 
 ## [v5.2.2] - 2026-05-26
 
