@@ -35,6 +35,12 @@ export const listDefinition = (
       kind: 'boolean',
     },
     {
+      name: 'champion',
+      summary: 'Show only branch champions and the priority winner.',
+      flag: '--champion',
+      kind: 'boolean',
+    },
+    {
       name: 'desc',
       summary: 'Include descriptions.',
       flag: '--desc',
@@ -52,6 +58,7 @@ export const listDefinition = (
     `${prefix}${alias} list --status in_progress`,
     `${prefix}${alias} list --status pending --status done`,
     `${prefix}${alias} list 12 --status done --flat`,
+    `${prefix}${alias} list --champion --flat`,
   ],
   webWidget: {
     placement: 'header',

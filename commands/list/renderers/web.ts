@@ -211,6 +211,10 @@ const todoListStylesheet = {
       gap: 0.45rem;
     }
 
+    .web-row.todo-status-filter-status-options {
+      margin-bottom: 1rem;
+    }
+
     .web-button.todo-status-filter-choice {
       position: relative;
       display: flex;
@@ -269,6 +273,10 @@ const todoListStylesheet = {
       justify-content: center;
       gap: 0.65rem;
       margin-top: 1rem;
+    }
+
+    .web-stack.todo-status-filter-display-options {
+      gap: 0.2rem;
     }
   `,
 } as const;
@@ -395,6 +403,36 @@ function statusFilterListAction(
   };
 }
 
+type BooleanListOptionActionProps = {
+  representation: ListRepresentation;
+  optionName: string;
+  enabled: boolean;
+};
+
+function booleanListOptionAction({
+  representation,
+  optionName,
+  enabled,
+}: BooleanListOptionActionProps): WebAction {
+  const options = { ...representation.data.listInvocation.options };
+
+  if (enabled) {
+    options[optionName] = true;
+  } else {
+    delete options[optionName];
+  }
+
+  return {
+    type: 'command',
+    command: representation.meta.command,
+    subcommand: 'list',
+    arguments: { ...representation.data.listInvocation.arguments },
+    options,
+    recordInTimeline: false,
+    revealIds: [STATUS_FILTER_REVEAL_ID],
+  };
+}
+
 function isDefaultStatusFilter(statuses: TodoListFilterStatus[]): boolean {
   if (statuses.length !== DEFAULT_TODO_LIST_FILTER_STATUSES.length) {
     return false;
@@ -447,6 +485,50 @@ function statusOptionChildren(
   ];
 }
 
+function optionCheckboxNode(checked: boolean): WebNode {
+  return {
+    type: 'element',
+    tag: 'checkbox',
+    props: {
+      checked,
+      disabled: true,
+      className: 'web-checkbox--retro todo-status-menu-checkbox',
+    },
+  };
+}
+
+function booleanFilterChoiceNode(params: {
+  representation: ListRepresentation;
+  optionName: string;
+  label: string;
+}): WebNode {
+  const checked =
+    params.representation.data.listInvocation.options[params.optionName] ===
+    true;
+
+  return {
+    type: 'element',
+    tag: 'button',
+    props: {
+      label: params.label,
+      className: `todo-status-filter-choice${checked ? ' is-selected' : ''}`,
+      action: booleanListOptionAction({
+        representation: params.representation,
+        optionName: params.optionName,
+        enabled: !checked,
+      }),
+    },
+    children: [
+      optionCheckboxNode(checked),
+      {
+        type: 'element',
+        tag: 'text',
+        children: [{ type: 'text', value: params.label }],
+      },
+    ],
+  };
+}
+
 function buildStatusFilterPanel(
   representation: ListRepresentation,
   hiddenUntilRevealed: boolean,
@@ -469,12 +551,15 @@ function buildStatusFilterPanel(
         type: 'element',
         tag: 'text',
         props: { className: 'todo-status-filter-label' },
-        children: [{ type: 'text', value: 'Show Items' }],
+        children: [{ type: 'text', value: 'Status Filter' }],
       },
       {
         type: 'element',
         tag: 'row',
-        props: { className: 'todo-status-filter-choices' },
+        props: {
+          className:
+            'todo-status-filter-choices todo-status-filter-status-options',
+        },
         children: TODO_LIST_FILTER_STATUSES.map(
           ({ status, label }): WebNode => {
             const checked = selected.includes(status);
@@ -494,6 +579,29 @@ function buildStatusFilterPanel(
             };
           },
         ),
+      },
+      {
+        type: 'element',
+        tag: 'text',
+        props: { className: 'todo-status-filter-label' },
+        children: [{ type: 'text', value: 'View Options' }],
+      },
+      {
+        type: 'element',
+        tag: 'stack',
+        props: { className: 'todo-status-filter-display-options' },
+        children: [
+          booleanFilterChoiceNode({
+            representation,
+            optionName: 'champion',
+            label: 'Show only champions',
+          }),
+          booleanFilterChoiceNode({
+            representation,
+            optionName: 'flat',
+            label: 'Show in flat form',
+          }),
+        ],
       },
       {
         type: 'element',

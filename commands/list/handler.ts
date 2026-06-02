@@ -86,7 +86,7 @@ function parseOptionalFilters(value: unknown): string[] | null {
 }
 
 function getListUsage(prefix: string, alias: string): string {
-  return `${prefix}${alias} list [<id>] [--status ${formatListStatusFilterChoices()}] [--flat] [--desc] [--level <n>]`;
+  return `${prefix}${alias} list [<id>] [--status ${formatListStatusFilterChoices()}] [--flat] [--champion] [--desc] [--level <n>]`;
 }
 
 function filterTodosWithTreeContext(
@@ -283,6 +283,7 @@ export function handleListCommand(params: {
   const rootId = explicitRootId ?? getFocusId(params.db);
   const filters = parseOptionalFilters(params.options.status);
   const flat = parseOptionalBoolean(params.options.flat);
+  const championOnly = parseOptionalBoolean(params.options.champion);
   const showDescriptions = parseOptionalBoolean(params.options.desc);
   const level = parseOptionalInteger(params.options.level);
 
@@ -341,6 +342,20 @@ export function handleListCommand(params: {
     );
   }
 
+  const champions = championViewState({
+    db: params.db,
+    todos,
+    rootId,
+  });
+
+  if (championOnly) {
+    todos = todos.filter(
+      (todo) =>
+        champions.championIds.has(todo.id) ||
+        champions.priorityWinnerId === todo.id,
+    );
+  }
+
   if (todos.length === 0) {
     return {
       type: 'empty',
@@ -350,12 +365,6 @@ export function handleListCommand(params: {
       message: 'No todos matching filter.',
     };
   }
-
-  const champions = championViewState({
-    db: params.db,
-    todos,
-    rootId,
-  });
 
   const priorityPrompt = priorityPromptForRoot({ db: params.db, rootId });
 

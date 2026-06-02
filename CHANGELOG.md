@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.4.0] - 2026-06-02
+
+- feat: champion only filter (28c2799)
+
 ## [v5.3.1] - 2026-05-31
 
-- fix: pick moved from list to duel (be2ebfc)
+- fix: pick moved from list to duel (dec819a)
 
 ## [v5.3.0] - 2026-05-29
 
