@@ -26,6 +26,7 @@ export type BuildTodoTreeResult<TItem extends TodoTreeViewItem> = {
 export type RenderTodoTreeItemsProps<TItem extends TodoTreeViewItem> = {
   nodes: TodoTreeNode<TItem>[];
   renderSummary: (item: TItem) => WebNode;
+  renderBody: ((item: TItem) => WebNode[]) | null;
   itemIdPrefix: string;
   itemUi: string;
   childrenClassName: string;
@@ -36,6 +37,7 @@ export type RenderTodoTreeItemsProps<TItem extends TodoTreeViewItem> = {
 type RenderTodoTreeItemProps<TItem extends TodoTreeViewItem> = {
   node: TodoTreeNode<TItem>;
   renderSummary: (item: TItem) => WebNode;
+  renderBody: ((item: TItem) => WebNode[]) | null;
   itemIdPrefix: string;
   itemUi: string;
   childrenClassName: string;
@@ -87,6 +89,7 @@ function filterTextForItem(item: TodoTreeViewItem): string {
 function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
   node,
   renderSummary,
+  renderBody,
   itemIdPrefix,
   itemUi,
   childrenClassName,
@@ -111,6 +114,7 @@ function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
     },
     summary: renderSummary(item),
     children: [
+      ...(renderBody === null ? [] : renderBody(item)),
       ...(node.children.length > 0
         ? [
             {
@@ -124,6 +128,7 @@ function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
               children: renderTodoTreeItems({
                 nodes: node.children,
                 renderSummary,
+                renderBody,
                 itemIdPrefix,
                 itemUi,
                 childrenClassName,
@@ -140,6 +145,7 @@ function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
 export function renderTodoTreeItems<TItem extends TodoTreeViewItem>({
   nodes,
   renderSummary,
+  renderBody,
   itemIdPrefix,
   itemUi,
   childrenClassName,
@@ -150,6 +156,7 @@ export function renderTodoTreeItems<TItem extends TodoTreeViewItem>({
     renderTodoTreeItem({
       node,
       renderSummary,
+      renderBody,
       itemIdPrefix,
       itemUi,
       childrenClassName,

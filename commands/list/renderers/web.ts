@@ -710,10 +710,16 @@ function todoTitleForUnderId(
   return row ? row.text.replace(/\s+/g, ' ').trim().slice(0, 200) : '?';
 }
 
-function revealInlineAddFormAction(targetId: string): WebAction {
+function revealInlineAddFormAction(
+  targetId: string,
+  expandTreeItemId: string | null,
+): WebAction {
   return {
     type: 'reveal',
     targetId,
+    ...(expandTreeItemId === null
+      ? {}
+      : { expandTreeItemIds: [expandTreeItemId] }),
   };
 }
 
@@ -1063,7 +1069,7 @@ function buildRootTodoAddControls(representation: ListRepresentation): WebNode {
           label: 'Add a new root item',
           className: 'todo-new-root-button',
           storyTargetId: 'todo-new-root',
-          action: revealInlineAddFormAction(ROOT_ADD_REVEAL_ID),
+          action: revealInlineAddFormAction(ROOT_ADD_REVEAL_ID, null),
         },
       },
       buildInlineTodoAddForm({
@@ -1363,6 +1369,7 @@ function renderTodoRowActionsMenu(
 ): WebNode {
   const addChildRevealId = inlineAddRevealId(item.id, 'child');
   const addSiblingRevealId = inlineAddRevealId(item.id, 'sibling');
+  const treeItemId = `todo-tree-item-${item.id}`;
 
   return {
     type: 'element',
@@ -1379,7 +1386,7 @@ function renderTodoRowActionsMenu(
         props: {
           label: 'Add child…',
           storyTargetId: `todo-add-child-${item.id}`,
-          action: revealInlineAddFormAction(addChildRevealId),
+          action: revealInlineAddFormAction(addChildRevealId, treeItemId),
         },
       },
       {
@@ -1388,7 +1395,7 @@ function renderTodoRowActionsMenu(
         props: {
           label: 'Add sibling…',
           storyTargetId: `todo-add-sibling-${item.id}`,
-          action: revealInlineAddFormAction(addSiblingRevealId),
+          action: revealInlineAddFormAction(addSiblingRevealId, treeItemId),
         },
       },
       {
@@ -1439,7 +1446,10 @@ function renderTodoRowActionsMenu(
         tag: 'menuItem',
         props: {
           label: 'Update…',
-          action: revealInlineAddFormAction(inlineUpdateRevealId(item.id)),
+          action: revealInlineAddFormAction(
+            inlineUpdateRevealId(item.id),
+            treeItemId,
+          ),
         },
       },
       {
@@ -1447,7 +1457,10 @@ function renderTodoRowActionsMenu(
         tag: 'menuItem',
         props: {
           label: 'Move…',
-          action: revealInlineAddFormAction(inlineMoveRevealId(item.id)),
+          action: revealInlineAddFormAction(
+            inlineMoveRevealId(item.id),
+            treeItemId,
+          ),
         },
       },
       {
@@ -1602,30 +1615,29 @@ function renderTreeItemSummary(
   representation: ListRepresentation,
   item: ListItem,
 ): WebNode {
-  return {
-    type: 'element',
-    tag: 'stack',
-    props: {
-      gap: 'xs',
-    },
-    children: [
-      renderTodoItemRow(representation, item),
-      buildInlineTodoAddForm({
-        representation,
-        revealId: inlineAddRevealId(item.id, 'child'),
-        underParentId: item.id,
-        placeholder: 'New child todo',
-      }),
-      buildInlineTodoAddForm({
-        representation,
-        revealId: inlineAddRevealId(item.id, 'sibling'),
-        underParentId: item.parentId,
-        placeholder: 'New sibling todo',
-      }),
-      buildInlineTodoUpdateForm({ representation, item }),
-      buildInlineTodoMoveForm(representation, item),
-    ],
-  };
+  return renderTodoItemRow(representation, item);
+}
+
+function renderTreeItemBody(
+  representation: ListRepresentation,
+  item: ListItem,
+): WebNode[] {
+  return [
+    buildInlineTodoAddForm({
+      representation,
+      revealId: inlineAddRevealId(item.id, 'child'),
+      underParentId: item.id,
+      placeholder: 'New child todo',
+    }),
+    buildInlineTodoAddForm({
+      representation,
+      revealId: inlineAddRevealId(item.id, 'sibling'),
+      underParentId: item.parentId,
+      placeholder: 'New sibling todo',
+    }),
+    buildInlineTodoUpdateForm({ representation, item }),
+    buildInlineTodoMoveForm(representation, item),
+  ];
 }
 
 function renderFlatTodoItem(
@@ -1724,6 +1736,7 @@ export function renderListWeb(
         children: renderTodoTreeItems({
           nodes: tree,
           renderSummary: (item) => renderTreeItemSummary(representation, item),
+          renderBody: (item) => renderTreeItemBody(representation, item),
           itemIdPrefix: 'todo-tree-item-',
           itemUi: 'todo-tree-item',
           childrenClassName: 'todo-tree-children',

@@ -239,6 +239,7 @@ function renderTodoTree(item: DuelTodoItem): WebNode[] {
       props: { size: 'sm' as const, tone: 'muted' as const },
       children: [text(child.text)],
     }),
+    renderBody: null,
     itemIdPrefix: 'todo-duel-tree-item-',
     itemUi: 'todo-duel-tree-item',
     childrenClassName: 'todo-duel-children',
@@ -560,6 +561,7 @@ function renderChampionChoiceTree(props: {
     children: renderTodoTreeItems({
       nodes,
       renderSummary: renderChampionTreeItemSummary,
+      renderBody: null,
       itemIdPrefix: `todo-champion-tree-item-${props.context.currentParentId ?? 'root'}-`,
       itemUi: 'todo-tree-item',
       childrenClassName: 'todo-champion-tree-children',
