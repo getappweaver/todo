@@ -881,6 +881,85 @@ function canReach(db: Database, fromId: number, toId: number): boolean {
   return false;
 }
 
+function collectReachableWinnerIds(db: Database, fromId: number): Set<number> {
+  const visited = new Set<number>();
+  const queue = [fromId];
+
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+
+    if (visited.has(node)) {
+      continue;
+    }
+
+    visited.add(node);
+
+    const next = db
+      .prepare(`SELECT loser_id FROM todo_comparisons WHERE winner_id = ?`)
+      .all(node) as { loser_id: number }[];
+
+    for (const row of next) {
+      queue.push(row.loser_id);
+    }
+  }
+
+  return visited;
+}
+
+function collectReachableLoserIds(db: Database, fromId: number): Set<number> {
+  const visited = new Set<number>();
+  const queue = [fromId];
+
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+
+    if (visited.has(node)) {
+      continue;
+    }
+
+    visited.add(node);
+
+    const next = db
+      .prepare(`SELECT winner_id FROM todo_comparisons WHERE loser_id = ?`)
+      .all(node) as { winner_id: number }[];
+
+    for (const row of next) {
+      queue.push(row.winner_id);
+    }
+  }
+
+  return visited;
+}
+
+type DeleteComparisonsInPathIntersectionProps = {
+  db: Database;
+  winnerReachable: Set<number>;
+  loserReachable: Set<number>;
+};
+
+function deleteComparisonsInPathIntersection({
+  db,
+  winnerReachable,
+  loserReachable,
+}: DeleteComparisonsInPathIntersectionProps): void {
+  const affectedIds = [...winnerReachable].filter((id) =>
+    loserReachable.has(id),
+  );
+
+  if (affectedIds.length === 0) {
+    return;
+  }
+
+  const placeholders = affectedIds.map(() => '?').join(',');
+
+  db.run(
+    `DELETE FROM todo_comparisons
+     WHERE winner_id IN (${placeholders})
+       AND loser_id IN (${placeholders})`,
+    [...affectedIds, ...affectedIds],
+  );
+}
+
 export function alreadyResolved(
   db: Database,
   aId: number,
@@ -895,6 +974,31 @@ export function wouldContradict(
   winnerId: number,
 ): boolean {
   return canReach(db, loserId, winnerId);
+}
+
+type RecordComparisonWithPrecedenceProps = {
+  db: Database;
+  winnerId: number;
+  loserId: number;
+};
+
+export function recordComparisonWithPrecedence({
+  db,
+  winnerId,
+  loserId,
+}: RecordComparisonWithPrecedenceProps): void {
+  if (wouldContradict(db, loserId, winnerId)) {
+    const winnerReachable = collectReachableWinnerIds(db, loserId);
+    const loserReachable = collectReachableLoserIds(db, winnerId);
+
+    deleteComparisonsInPathIntersection({
+      db,
+      winnerReachable,
+      loserReachable,
+    });
+  }
+
+  recordComparison(db, winnerId, loserId);
 }
 
 export function resetComparisons(db: Database, parentId: number | null): void {

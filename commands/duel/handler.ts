@@ -15,7 +15,7 @@ import {
   getNextPair,
   getParentId,
   getRankedSiblings,
-  recordComparison,
+  recordComparisonWithPrecedence,
   resetComparisons,
   wouldContradict,
   formatWinRate,
@@ -159,13 +159,15 @@ export async function startDuelSession(props: {
 
     if (wouldContradict(db, loserId, winnerId)) {
       await sendReply(
-        `⚠ Contradiction — "${loserTitle}" already ranks above "${winnerTitle}" transitively. Skipping.`,
+        `⚠ Updated earlier priority results to keep "${winnerTitle}" above "${loserTitle}".`,
       );
+
+      recordComparisonWithPrecedence({ db, winnerId, loserId });
 
       continue;
     }
 
-    recordComparison(db, winnerId, loserId);
+    recordComparisonWithPrecedence({ db, winnerId, loserId });
   }
 }
 

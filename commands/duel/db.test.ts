@@ -10,8 +10,11 @@ import {
   getChampionScope,
   getNextTournamentPairForScope,
   getResolvedChampionChildren,
+  recordComparison,
+  recordComparisonWithPrecedence,
   setChampion,
   skipChampionScope,
+  wouldContradict,
 } from './db';
 import { handleDuelWebAction } from './web';
 
@@ -287,6 +290,59 @@ describe('todo champion prioritization', () => {
       expect(refreshPickScope.children.map((child) => child.id)).toEqual([
         285, 122, 226, 284, 288,
       ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  test('later priority choices replace the contradicting chain', () => {
+    const db = createDb();
+
+    try {
+      insertTodo({
+        db,
+        id: 1,
+        parentId: null,
+        todo: 'A',
+        status: 'pending',
+        sortOrder: 1,
+      });
+
+      insertTodo({
+        db,
+        id: 2,
+        parentId: null,
+        todo: 'B',
+        status: 'pending',
+        sortOrder: 2,
+      });
+
+      insertTodo({
+        db,
+        id: 3,
+        parentId: null,
+        todo: 'C',
+        status: 'pending',
+        sortOrder: 3,
+      });
+
+      recordComparison(db, 1, 2);
+      recordComparison(db, 2, 3);
+
+      expect(wouldContradict(db, 1, 3)).toBe(true);
+
+      recordComparisonWithPrecedence({ db, winnerId: 3, loserId: 1 });
+
+      const comparisons = db
+        .prepare(
+          `SELECT winner_id, loser_id
+           FROM todo_comparisons
+           ORDER BY winner_id, loser_id`,
+        )
+        .all() as { winner_id: number; loser_id: number }[];
+
+      expect(comparisons).toEqual([{ winner_id: 3, loser_id: 1 }]);
+      expect(wouldContradict(db, 1, 3)).toBe(false);
     } finally {
       db.close();
     }

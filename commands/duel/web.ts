@@ -27,7 +27,7 @@ import {
   getResolvedChampionChildren,
   getStaleChampionCandidate,
   keepChampion,
-  recordComparison,
+  recordComparisonWithPrecedence,
   resetChampionScope,
   setChampion,
   skipComparison,
@@ -1197,17 +1197,26 @@ export function handleDuelWebAction(
         flowRootId,
       });
 
+      recordComparisonWithPrecedence({
+        db: props.db,
+        winnerId,
+        loserId,
+      });
+
       return renderPrioritizeScope({
         db: props.db,
         commandAlias: props.commandAlias,
         parentId: flowRootId,
         returnRootId,
-        notice:
-          'That choice contradicts existing priority results, so it was skipped.',
+        notice: 'Updated earlier priority results to keep that choice.',
       });
     }
 
-    recordComparison(props.db, winnerId, loserId);
+    recordComparisonWithPrecedence({
+      db: props.db,
+      winnerId,
+      loserId,
+    });
 
     debugPrioritize('answer:recorded', {
       winnerId,
