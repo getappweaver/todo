@@ -176,6 +176,7 @@ const todoListStylesheet = {
       text-transform: uppercase;
       box-shadow: 6px 6px 0 var(--color-panel-shadow);
       cursor: pointer;
+      margin-right: 6px;
     }
     .web-button.todo-new-root-button:hover,
     .web-button.todo-new-root-button:focus-visible {
