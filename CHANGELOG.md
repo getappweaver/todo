@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.5.0] - 2026-06-14
+
+- feat: refresh todo story demos (47d625f)
+
 ## [v5.4.3] - 2026-06-09
 
-- fix: add spacing for new root button (0b8b412)
+- fix: add spacing for new root button (f9bfdfe)
 
 ## [v5.4.2] - 2026-06-09
 

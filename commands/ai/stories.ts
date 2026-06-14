@@ -106,11 +106,13 @@ export function buildAiPromptStory(params: {
             prefix: params.prefix,
             alias: params.alias,
             items: emptyTodoItems,
+            listOptions: {},
           }).web,
           buildTodoListStoryCommandOutput({
             prefix: params.prefix,
             alias: params.alias,
             items: aiPromptItems,
+            listOptions: {},
           }).web,
         ],
       },
@@ -236,6 +238,7 @@ export function buildAiPromptStory(params: {
     prefix: params.prefix,
     alias: params.alias,
     items: aiPromptItems,
+    listOptions: {},
   });
 
   return story;

@@ -619,11 +619,13 @@ export function buildDuelStory(params: {
             prefix: params.prefix,
             alias: params.alias,
             items: duelItems,
+            listOptions: {},
           }).web,
           buildTodoListStoryCommandOutput({
             prefix: params.prefix,
             alias: params.alias,
             items: duelRankedItems,
+            listOptions: {},
           }).web,
         ],
         [`${params.alias}:duel`]: [

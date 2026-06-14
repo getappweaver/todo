@@ -20,6 +20,7 @@ export function buildTodoListStoryCommandOutput(params: {
   prefix: string;
   alias: string;
   items: TodoStoryListItem[];
+  listOptions: Record<string, unknown>;
 }): NonNullable<StoryDefinition<TodoStoryState>['commandOutput']> {
   const itemsById = new Map(params.items.map((item) => [item.id, item]));
 
@@ -31,7 +32,7 @@ export function buildTodoListStoryCommandOutput(params: {
     showDescriptions: false,
     listInvocation: {
       arguments: {},
-      options: {},
+      options: params.listOptions,
     },
     priorityPrompt: null,
     items: params.items.map((item) => {

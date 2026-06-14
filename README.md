@@ -8,7 +8,13 @@ Todo list management: hierarchical todos, drafts, and AI-assisted revise.
 
 [Interactive Demo](https://getappweaver.com/todo-app)
 
-![Todo app screenshot](https://getappweaver.com/screenshots/todo.png)
+![Create todos with AI](https://getappweaver.com/gifs/todo-add-by-ai.gif)
+
+![Create todos with AI on mobile](https://getappweaver.com/gifs/todo-add-by-ai-mobile.gif)
+
+![Add todos on mobile](https://getappweaver.com/gifs/todo-add-mobile.gif)
+
+![Prioritize todos with duels](https://getappweaver.com/gifs/todo-duel-mobile.gif)
 
 ## Commands
 

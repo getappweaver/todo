@@ -7,6 +7,8 @@ import {
 } from '../../story-support';
 import type { Todo } from '../../types/todos';
 
+const addStoryListOptions = { __storySkipPrioritizeRefresh: true };
+
 const addedRootTodo = {
   id: 104,
   parent_id: null,
@@ -61,8 +63,7 @@ export function buildAddStory(params: {
     description: 'Use the list widget native New flow to create a todo.',
     showcase: {
       title: 'Focused apps inside your workspace',
-      description:
-        'Open an installed Todo app, create structured data, and keep the workflow inside the same chat-native surface.',
+      description: 'Open the installed Todo app and create a todo item.',
       timing: { initialDelayMs: 900, stepDelayMs: 1800, storyDelayMs: 2400 },
     },
     kind: 'command',
@@ -75,21 +76,25 @@ export function buildAddStory(params: {
             prefix: params.prefix,
             alias: params.alias,
             items: emptyTodoItems,
+            listOptions: addStoryListOptions,
           }).web,
           buildTodoListStoryCommandOutput({
             prefix: params.prefix,
             alias: params.alias,
             items: [addedRootTodo],
+            listOptions: addStoryListOptions,
           }).web,
           buildTodoListStoryCommandOutput({
             prefix: params.prefix,
             alias: params.alias,
             items: [addedRootTodo, addedSiblingTodo],
+            listOptions: addStoryListOptions,
           }).web,
           buildTodoListStoryCommandOutput({
             prefix: params.prefix,
             alias: params.alias,
             items: finalItems,
+            listOptions: addStoryListOptions,
           }).web,
         ],
         [`${params.alias}:add`]: [
@@ -117,9 +122,9 @@ export function buildAddStory(params: {
         type: 'instruction',
         text: 'Open the Todo widget from the header to create your first todo.',
         showcase: {
-          title: 'Installed apps are always available',
+          title: 'Todo app has a header button as a shortcut.',
           description:
-            'Plugin commands can expose native widgets directly in the web UI.',
+            'The Todo plugin list command exposes a web widget button in the header.',
         },
       },
       {
@@ -140,11 +145,10 @@ export function buildAddStory(params: {
       },
       {
         type: 'instruction',
-        text: 'Click New to open the widget-native add form.',
+        text: 'Add a new root todo item.',
         showcase: {
-          title: 'Commands can become interfaces',
-          description:
-            'The same command surface can render forms, actions, and rich outputs.',
+          title: 'Create your first todo item.',
+          description: 'Add a root item to the todo list.',
         },
       },
       {
@@ -159,9 +163,8 @@ export function buildAddStory(params: {
         type: 'fill_form',
         targetId: 'todo-add-text',
         showcase: {
-          title: 'Type once, store it as app data',
-          description:
-            'The todo is created as structured plugin state, ready for follow-up actions.',
+          title: 'Type the title of the item into the form.',
+          description: 'What is this todo about?',
         },
         values: { arguments: { text: addedRootTodo.todo }, options: {} },
       },
@@ -185,9 +188,8 @@ export function buildAddStory(params: {
         type: 'instruction',
         text: 'Hover the todo row to reveal its row actions.',
         showcase: {
-          title: 'Structured data stays interactive',
-          description:
-            'Outputs are not screenshots. They remain live app surfaces with follow-up actions.',
+          title: 'Hover the todo row to reveal its row actions.',
+          description: 'There are row actions available for each todo item.',
         },
       },
       {
@@ -219,9 +221,8 @@ export function buildAddStory(params: {
         type: 'instruction',
         text: 'Click Add sibling to open another inline add form.',
         showcase: {
-          title: 'Keep related work grouped together',
-          description:
-            'Sibling items make it easy to grow a small checklist from one starting point.',
+          title: 'Another way to add a root item',
+          description: 'is to add a sibling item to a root item.',
         },
       },
       {
@@ -263,9 +264,8 @@ export function buildAddStory(params: {
         type: 'instruction',
         text: 'Hover the parent todo row again to add a child item.',
         showcase: {
-          title: 'Nested workflows are first-class',
-          description:
-            'Todos can become trees, so plans can carry subtasks where they belong.',
+          title: 'Todo list can become a giant tree of tasks',
+          description: 'Add a child item to a parent as a sub-task.',
         },
       },
       {
@@ -341,6 +341,7 @@ export function buildAddStory(params: {
     prefix: params.prefix,
     alias: params.alias,
     items: finalItems,
+    listOptions: addStoryListOptions,
   });
 
   return story;

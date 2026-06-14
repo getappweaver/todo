@@ -52,6 +52,7 @@ const DEFAULT_TODO_LIST_FILTER_STATUSES: TodoListFilterStatus[] = [
 
 const STATUS_FILTER_REVEAL_ID = 'todo-list-status-filter';
 const ROOT_ADD_REVEAL_ID = 'todo-inline-add-root';
+const SKIP_PRIORITIZE_REFRESH_OPTION = '__storySkipPrioritizeRefresh';
 
 const todoListStylesheet = {
   id: 'todo-list-web',
@@ -308,6 +309,35 @@ function prioritizeRefresh(
   };
 }
 
+function activeSiblingCount(
+  representation: ListRepresentation,
+  parentId: number | null,
+): number {
+  return representation.data.items.filter(
+    (item) => item.parentId === parentId && item.status !== 'done',
+  ).length;
+}
+
+function siblingGroupRefresh(params: {
+  representation: ListRepresentation;
+  parentId: number | null;
+  activeDelta: number;
+}): WebRefreshPayload {
+  if (
+    params.representation.data.listInvocation.options[
+      SKIP_PRIORITIZE_REFRESH_OPTION
+    ] === true
+  ) {
+    return listRefresh(params.representation);
+  }
+
+  return activeSiblingCount(params.representation, params.parentId) +
+    params.activeDelta >=
+    2
+    ? prioritizeRefresh(params.representation)
+    : listRefresh(params.representation);
+}
+
 function rowHighlightTargetId(itemId: number): string {
   return `todo-row-${itemId}`;
 }
@@ -317,7 +347,11 @@ function listRefreshHighlightingCreatedTodo(
   underParentId: number | null,
 ): WebRefreshPayload {
   return {
-    ...prioritizeRefresh(representation),
+    ...siblingGroupRefresh({
+      representation,
+      parentId: underParentId,
+      activeDelta: 1,
+    }),
     highlightTargetIdFromOutput: {
       pattern: 'Todo created: #(\\d+)',
       template: 'todo-row-$1',
@@ -332,8 +366,18 @@ function listRefreshHighlightingTodo(
   representation: ListRepresentation,
   itemId: number,
 ): WebRefreshPayload {
+  const item = representation.data.items.find(
+    (candidate) => candidate.id === itemId,
+  );
+
   return {
-    ...prioritizeRefresh(representation),
+    ...(item
+      ? siblingGroupRefresh({
+          representation,
+          parentId: item.parentId,
+          activeDelta: 0,
+        })
+      : prioritizeRefresh(representation)),
     highlightTargetIds: [rowHighlightTargetId(itemId)],
   };
 }
