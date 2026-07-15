@@ -6,7 +6,7 @@ Todo list management: hierarchical todos, drafts, and AI-assisted revise.
 
 ## Demo
 
-[Interactive Demo](https://getappweaver.com/todo-app)
+[Interactive Demo](https://getappweaver.com/apps/todo)
 
 ![Create todos with AI](https://getappweaver.com/gifs/todo-add-by-ai.gif)
 

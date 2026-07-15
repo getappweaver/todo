@@ -55,6 +55,73 @@ export function formatTodoSubtreeListHeader(
   return `Focus to: #${rootId} "${safe}"\ntype "!todo unfocus" to return to top-level\n\n`;
 }
 
+type FormatTodoContextProps = {
+  allTodos: Todo[];
+  subtreeTodos: Todo[];
+  rootId: number;
+  showDescription: boolean;
+};
+
+function formatTodoLine(todo: Todo): string {
+  const icon = TODO_STATUS_ICON[todo.status] ?? '[ ]';
+
+  return `#${todo.id} ${icon} ${todo.todo}${winLine(todo)}`;
+}
+
+export function formatTodoContext({
+  allTodos,
+  subtreeTodos,
+  rootId,
+  showDescription,
+}: FormatTodoContextProps): string {
+  const byId = new Map(allTodos.map((todo) => [todo.id, todo]));
+  const item = byId.get(rootId);
+
+  if (!item) {
+    return `Todo not found: #${rootId}`;
+  }
+
+  const parent = item.parent_id === null ? null : byId.get(item.parent_id);
+  const children = subtreeTodos.filter((todo) => todo.parent_id === rootId);
+  const branch: Todo[] = [];
+  let current: Todo | undefined = item;
+
+  while (current) {
+    branch.push(current);
+
+    current =
+      current.parent_id === null ? undefined : byId.get(current.parent_id);
+  }
+
+  branch.reverse();
+
+  const lines = [formatTodoLine(item), '', 'Parent:'];
+  lines.push(parent ? `- ${formatTodoLine(parent)}` : '- None');
+  lines.push('', 'Direct Children:');
+
+  lines.push(
+    ...(children.length > 0
+      ? children.map((child) => `- ${formatTodoLine(child)}`)
+      : ['- None']),
+  );
+
+  lines.push('', 'Branch:');
+
+  for (const [index, todo] of branch.entries()) {
+    const prefix = index === 0 ? '' : `${'   '.repeat(index - 1)}└─ `;
+
+    lines.push(`${prefix}${formatTodoLine(todo)}`);
+  }
+
+  const description = item.description?.trim();
+
+  if (showDescription && description) {
+    lines.push('', 'Description:', description);
+  }
+
+  return lines.join('\n');
+}
+
 export function formatTodoTree(
   todos: Todo[],
   showDescriptions: boolean,

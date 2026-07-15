@@ -6,6 +6,7 @@ import { openDb } from '../db/open';
 import { getTodo, listTodos, listTodosInSubtree } from '../db/todos';
 import { formatDraftReply, hasDraftChildren } from '../output/draft/format';
 import {
+  formatTodoContext,
   filterTodosForListTool,
   formatTodoTree,
 } from '../output/todo-tree/format';
@@ -169,10 +170,10 @@ After the CLI returns, apply the draft using the reply instructions included in 
 
 List policy:
 - For \`list\`, omit \`filter\` for active todos (\`pending\` + \`in_progress\`; not \`done\` or \`cancelled\`), same as \`!${alias} list\` with no filter. If \`filter\` is set, it must be a non-empty array of statuses to include (e.g. \`["in_progress"]\`, \`["done"]\`, or all four for everything). Combine statuses as needed.
-- If the user mentions a todo by copied ID (for example \`#154\`) and you need its context before answering or mutating, call \`list\` with \`id: 154\` first. ID-scoped \`list\` returns that todo and its visible subtree; use \`desc: true\` when descriptions matter.
+- If the user mentions a todo by copied ID (for example \`#154\`) and you need its context before answering or mutating, call \`list\` with \`id: 154\` first. ID-scoped \`list\` returns the todo, its parent, direct children, and an ancestry branch; use \`desc: true\` when the todo description matters.
 
 Output policy:
-- For \`list\`, return the tool output verbatim. Lines use a checkbox prefix (\`[ ]\`, \`[~]\`, etc.) and tree lines end with \`(id: N)\`. Do not rewrite into your own bullets, do not move IDs into backticks, and do not drop the checkboxes.
+- For \`list\`, return the tool output verbatim. It includes status markers (\`[ ]\`, \`[~]\`, etc.) and todo IDs. Do not rewrite it or drop this context.
 - For mutating calls (\`create\`, \`update\`, \`delete\`), return the CLI output to the user verbatim.
 - Do NOT summarize, shorten, or replace it with only "Created draft #...".
 - The user must see the full draft preview text and reply commands exactly as returned.
@@ -194,10 +195,10 @@ export async function executeTool(params: {
         return `Todo not found: #${rootId}`;
       }
 
+      const allTodos = listTodos(params.db);
+
       const todos =
-        rootId === undefined
-          ? listTodos(params.db)
-          : listTodosInSubtree(params.db, rootId);
+        rootId === undefined ? allTodos : listTodosInSubtree(params.db, rootId);
 
       const statusFilter = params.call.filter;
       const desc = params.call.desc ?? false;
@@ -207,9 +208,18 @@ export async function executeTool(params: {
           ? filterTodosForListTool(todos, statusFilter)
           : todos;
 
-      return filtered.length === 0
-        ? emptyTodoListMessage(statusFilter)
-        : formatTodoTree(filtered, desc, rootId);
+      if (filtered.length === 0) {
+        return emptyTodoListMessage(statusFilter);
+      }
+
+      return rootId === undefined
+        ? formatTodoTree(filtered, desc)
+        : formatTodoContext({
+            allTodos,
+            subtreeTodos: filtered,
+            rootId,
+            showDescription: desc,
+          });
     }
 
     case 'create': {

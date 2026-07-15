@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.6.0] - 2026-07-15
+
+- feat: improve ID-scoped todo context (088bab0)
+
 ## [v5.5.0] - 2026-06-14
 
-- feat: refresh todo story demos (47d625f)
+- feat: refresh todo story demos (c3b9ffa)
 
 ## [v5.4.3] - 2026-06-09
 

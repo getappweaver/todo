@@ -15,6 +15,7 @@ import {
   getNextPair,
   getParentId,
   getRankedSiblings,
+  recordComparison,
   recordComparisonWithPrecedence,
   resetComparisons,
   wouldContradict,
