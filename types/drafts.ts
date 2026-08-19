@@ -39,9 +39,7 @@ export type DeleteDraftEntry = {
 };
 
 export type TodoDraftEntry =
-  | CreateDraftEntry
-  | UpdateDraftEntry
-  | DeleteDraftEntry;
+  CreateDraftEntry | UpdateDraftEntry | DeleteDraftEntry;
 
 export type TodoDraftRow = TodoDraftEntry & {
   id: number;

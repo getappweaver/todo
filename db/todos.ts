@@ -145,8 +145,7 @@ function listTodosDepthFirstWinOrdered(db: Database): TodoWithWinStats[] {
 
 export function getTodo(db: Database, id: number): Todo | null {
   const row = db.prepare('SELECT * FROM todos WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
 
   return row ? rowToTodo(row) : null;
 }

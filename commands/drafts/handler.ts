@@ -9,8 +9,7 @@ function parseOptionalInteger(value: unknown): number | null {
 }
 
 export type DraftsCommandResult =
-  | { type: 'error'; message: string }
-  | { type: 'success'; text: string };
+  { type: 'error'; message: string } | { type: 'success'; text: string };
 
 export function handleDraftsCommand(params: {
   alias: string;

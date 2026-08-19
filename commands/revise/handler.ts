@@ -42,8 +42,7 @@ function parseRequiredText(value: unknown): string | null {
 }
 
 export type ReviseCommandResult =
-  | { type: 'error'; message: string }
-  | { type: 'success'; message: string };
+  { type: 'error'; message: string } | { type: 'success'; message: string };
 
 export async function handleReviseCommand(params: {
   prefix: string;

@@ -7,8 +7,7 @@ function parseOptionalInteger(value: unknown): number | null {
 }
 
 export type DeclineCommandResult =
-  | { type: 'error'; message: string }
-  | { type: 'success'; message: string };
+  { type: 'error'; message: string } | { type: 'success'; message: string };
 
 export function handleDeclineCommand(params: {
   prefix: string;

@@ -31,9 +31,7 @@ type AiErrorResult = {
 };
 
 export type AiCommandResult =
-  | AiListResult
-  | AiReviewSessionResult
-  | AiErrorResult;
+  AiListResult | AiReviewSessionResult | AiErrorResult;
 
 function parsePromptArgument(value: unknown): string {
   if (Array.isArray(value)) {

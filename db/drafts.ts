@@ -51,8 +51,7 @@ export function storeDraft(db: Database, entry: StoreDraftEntry): number {
 
 export function getDraft(db: Database, id: number): TodoDraftRow | null {
   const row = db.prepare('SELECT * FROM todo_drafts WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
 
   return row ? rowToDraft(row) : null;
 }

@@ -21,8 +21,7 @@ function parseRequiredString(value: unknown): string | null {
 }
 
 export type AcceptCommandResult =
-  | { type: 'error'; message: string }
-  | { type: 'success'; message: string };
+  { type: 'error'; message: string } | { type: 'success'; message: string };
 
 export function handleAcceptCommand(params: {
   prefix: string;

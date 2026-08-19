@@ -549,8 +549,7 @@ function hasValidSkip(props: {
        WHERE scope_key = ?`,
     )
     .get(championScopeKey(props.parentId)) as
-    | { scope_hash: string }
-    | undefined;
+    { scope_hash: string } | undefined;
 
   return row?.scope_hash === props.scopeHash;
 }

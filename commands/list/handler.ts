@@ -326,8 +326,7 @@ export function handleListCommand(params: {
       : listTodosInSubtree(params.db, rootId);
 
   const statusFilters = parsedFilters?.map((filter) => filter.data) as
-    | ListStatusFilter[]
-    | undefined;
+    ListStatusFilter[] | undefined;
 
   if (!statusFilters) {
     todos = todos.filter(isActiveListTodo);
