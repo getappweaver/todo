@@ -1,8 +1,9 @@
 import type { Database } from 'bun:sqlite';
 
 import { getOutputString } from '@src/backends/types';
-import type { RunAgentFn } from '@src/core/plugin';
+import type { PluginAgentService } from '@src/core/plugin';
 
+import { runTodoAgent } from '../../agent';
 import { parseTodoToolCalls } from '../../ai/parse';
 import { buildSystemPrompt } from '../../ai/prompt';
 import type { TodoToolCall } from '../../ai/schema';
@@ -13,6 +14,7 @@ import {
   formatTodoTree,
   isActiveListTodo,
 } from '../../output/todo-tree/format';
+import { getTodoAiSettings, saveTodoAiSettings } from '../../settings';
 import type { TodoStatus } from '../../types/todos';
 
 type AiListResult = {
@@ -61,7 +63,8 @@ export async function handleAiCommand(params: {
   alias: string;
   db: Database;
   arguments: Record<string, unknown>;
-  runAgent: RunAgentFn;
+  options: Record<string, unknown>;
+  agent: PluginAgentService;
 }): Promise<AiCommandResult> {
   const userPrompt = parsePromptArgument(params.arguments.prompt);
 
@@ -80,9 +83,25 @@ export async function handleAiCommand(params: {
       ? formatTodoTree(activeTodos, false)
       : '(no active todos yet)';
 
-  const result = await params.runAgent(
-    buildSystemPrompt(userPrompt, activeTree),
-  );
+  const currentSettings = getTodoAiSettings(params.db);
+  const hasSelectionUpdate = params.options.save_selections === true;
+
+  if (hasSelectionUpdate) {
+    saveTodoAiSettings(params.db, {
+      ...currentSettings,
+      includeUserInstructions:
+        params.options.include_user_instructions === true,
+      runtimeContext: params.options.runtime_context === true,
+      workspaceInstructions: params.options.workspace_instructions === true,
+      agentsInstructions: params.options.agents_instructions === true,
+    });
+  }
+
+  const result = await runTodoAgent({
+    agent: params.agent,
+    prompt: buildSystemPrompt(userPrompt, activeTree),
+    db: params.db,
+  });
 
   const raw = getOutputString(result).trim();
 

@@ -1,8 +1,9 @@
 import type { Database } from 'bun:sqlite';
 
 import { getOutputString } from '@src/backends/types';
-import type { RunAgentFn } from '@src/core/plugin';
+import type { PluginAgentService } from '@src/core/plugin';
 
+import { runTodoAgent } from '../../agent';
 import { parseTodoToolCalls } from '../../ai/parse';
 import { buildSystemPrompt } from '../../ai/prompt';
 import { formatCreateDraftPreview } from '../../output/draft/format';
@@ -49,7 +50,7 @@ export async function handleReviseCommand(params: {
   alias: string;
   db: Database;
   arguments: Record<string, unknown>;
-  runAgent: RunAgentFn | null;
+  agent: PluginAgentService;
 }): Promise<ReviseCommandResult> {
   const draftId = parseOptionalInteger(params.arguments.id);
   const corrections = parseRequiredText(params.arguments.corrections);
@@ -86,15 +87,12 @@ export async function handleReviseCommand(params: {
 
   const revisedPrompt = `Revise the following todo: "${draft.input.todo}". Correction: "${corrections}".`;
 
-  if (!params.runAgent) {
-    return {
-      type: 'error',
-      message: 'AI not available.',
-    };
-  }
-
   const raw = getOutputString(
-    await params.runAgent(buildSystemPrompt(revisedPrompt, activeTree)),
+    await runTodoAgent({
+      agent: params.agent,
+      prompt: buildSystemPrompt(revisedPrompt, activeTree),
+      db: params.db,
+    }),
   );
 
   if (!raw || raw === '(no output)') {

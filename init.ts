@@ -61,7 +61,7 @@ export const TodoPlugin: BotPlugin = {
       alias,
       db: TodoPluginDb,
       identity: TodoPlugin.identity,
-      runAgent: context.runAgent,
+      agent: context.agent,
       helpText: TodoPlugin.helpText,
       promptFn: context.promptFn ?? TodoPluginContext.promptFn,
       sendReply: context.sendReply ?? TodoPluginContext.sendReply,

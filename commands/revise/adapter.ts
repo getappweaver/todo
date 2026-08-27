@@ -10,7 +10,7 @@ export async function adaptReviseCommand(
     alias: params.alias,
     db: params.db,
     arguments: params.parsed.arguments,
-    runAgent: params.runAgent,
+    agent: params.agent,
   });
 
   return result.message;

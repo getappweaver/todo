@@ -15,6 +15,7 @@ import { listDefinition } from './commands/list/definition';
 import { moveDefinition } from './commands/move/definition';
 import { nextDefinition } from './commands/next/definition';
 import { reviseDefinition } from './commands/revise/definition';
+import { settingsDefinition } from './commands/settings/definition';
 import { showDefinition } from './commands/show/definition';
 import { startDefinition } from './commands/start/definition';
 import { unfocusDefinition } from './commands/unfocus/definition';
@@ -30,6 +31,7 @@ export const commandDefinition = (
   subcommands: [
     createHelpSubcommandDefinition(prefix, alias, null),
     aiDefinition(prefix, alias),
+    settingsDefinition(prefix, alias),
     addDefinition(prefix, alias),
     draftsDefinition(prefix, alias),
     acceptDefinition(prefix, alias),

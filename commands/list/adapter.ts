@@ -1,5 +1,6 @@
 import type { WebNodeRoot } from '@src/web/ui-schema';
 
+import { getTodoAiSettings } from '../../settings';
 import type { TodoCommandAdapterParams } from '../../types/adapter-params';
 
 import { handleListCommand } from './handler';
@@ -24,6 +25,8 @@ export function adaptListCommand(
 
   if (result.type === 'empty') {
     if (params.source === 'web') {
+      const aiSettings = getTodoAiSettings(params.db);
+
       return renderListWeb(
         createListRepresentation({
           command: params.alias,
@@ -38,7 +41,17 @@ export function adaptListCommand(
           priorityPrompt: null,
           items: [],
         }),
-        { prefix: params.prefix },
+        {
+          prefix: params.prefix,
+          aiSettings,
+          agentDefaults: params.agent.getDefaults(),
+          effectiveModel: params.agent.getEffectiveModel({
+            backend: aiSettings.backend,
+            model: aiSettings.model,
+            mode: null,
+            workspaceTarget: null,
+          }),
+        },
       );
     }
 
@@ -60,7 +73,19 @@ export function adaptListCommand(
   });
 
   if (params.source === 'web') {
-    return renderListWeb(representation, { prefix: params.prefix });
+    const aiSettings = getTodoAiSettings(params.db);
+
+    return renderListWeb(representation, {
+      prefix: params.prefix,
+      aiSettings,
+      agentDefaults: params.agent.getDefaults(),
+      effectiveModel: params.agent.getEffectiveModel({
+        backend: aiSettings.backend,
+        model: aiSettings.model,
+        mode: null,
+        workspaceTarget: null,
+      }),
+    });
   }
 
   return renderListText(representation, { prefix: params.prefix });

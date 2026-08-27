@@ -1,5 +1,8 @@
+import type { PluginAgentDefaults } from '@src/core/plugin';
 import type { WebRenderContext } from '@src/system/render-context';
 import type { WebAction, WebNode, WebNodeRoot } from '@src/web/ui-schema';
+
+import type { TodoAiSettings } from '../../../settings';
 
 import { buildTodoTree, renderTodoTreeItems } from '../../shared/tree-view';
 
@@ -28,6 +31,12 @@ type BuildFocusedScopeWebNodeProps = {
 };
 
 type TodoListFilterStatus = 'pending' | 'in_progress' | 'done';
+
+type TodoListWebContext = WebRenderContext & {
+  aiSettings?: TodoAiSettings;
+  agentDefaults?: PluginAgentDefaults;
+  effectiveModel?: string;
+};
 
 const TODO_TEXT_STATUS: Record<ListItem['status'], string> = {
   pending: '[ ]',
@@ -680,11 +689,108 @@ function inlineMoveRevealId(itemId: number): string {
   return `todo-inline-move-${itemId}`;
 }
 
+function todoSettingsAction(command: string): WebAction {
+  return {
+    type: 'command',
+    command,
+    subcommand: 'settings',
+    arguments: {},
+    options: {},
+    surface: 'modal',
+    modalTitle: 'Todo AI backend and model selection',
+    recordInTimeline: false,
+  };
+}
+
+function aiConfigurationAction(): WebAction {
+  return {
+    type: 'command',
+    command: 'skills',
+    subcommand: 'manager',
+    arguments: {},
+    options: {},
+    surface: 'modal',
+    modalTitle: 'AI Configuration',
+    recordInTimeline: false,
+  };
+}
+
+function linkButton(label: string, action: WebAction): WebNode {
+  return {
+    type: 'element',
+    tag: 'button',
+    props: {
+      label,
+      className: 'web-button--link',
+      action,
+    },
+    children: [],
+  };
+}
+
+function aiIncludeOption(props: {
+  name: string;
+  checked: boolean;
+  linkLabel: string;
+  action: WebAction;
+  suffix: string | null;
+}): WebNode {
+  return {
+    type: 'element',
+    tag: 'row',
+    props: { gap: 'xs', itemAlign: 'center' },
+    children: [
+      {
+        type: 'element',
+        tag: 'checkbox',
+        props: {
+          formFieldName: props.name,
+          checked: props.checked,
+          className: 'web-checkbox--retro',
+        },
+        children: [],
+      },
+      { type: 'text', value: 'Include' },
+      linkButton(props.linkLabel, props.action),
+      ...(props.suffix ? [{ type: 'text' as const, value: props.suffix }] : []),
+    ],
+  };
+}
+
 /** Generic `form` + `textField` + `button` (submit); `WebAction` is merged with FormData on the client. */
-function buildListAiCommandForm(representation: ListRepresentation): WebNode {
+function buildListAiCommandForm(
+  representation: ListRepresentation,
+  context: TodoListWebContext,
+): WebNode {
   const command = representation.meta.command;
   const li = representation.data.listInvocation;
   const r = listRefresh(representation);
+
+  const settings =
+    context.aiSettings ??
+    ({
+      backend: null,
+      model: null,
+      runtimeContext: false,
+      workspaceInstructions: false,
+      agentsInstructions: false,
+      userInstructions: '',
+      includeUserInstructions: true,
+    } satisfies TodoAiSettings);
+
+  const defaults =
+    context.agentDefaults ??
+    ({
+      backend: 'opencode',
+      provider: 'local',
+      model: null,
+      effectiveModel: 'opencode/big-pickle',
+      mode: 'ask',
+      workspaceTarget: 'parent',
+    } satisfies PluginAgentDefaults);
+
+  const backend = settings.backend ?? defaults.backend;
+  const model = context.effectiveModel ?? settings.model ?? defaults.effectiveModel;
 
   return {
     type: 'element',
@@ -692,12 +798,18 @@ function buildListAiCommandForm(representation: ListRepresentation): WebNode {
     props: {
       className:
         'web-form web-form--stacked web-form--ai-prompt todo-ai-prompt-form',
+      formOptionFieldNames: [
+        'include_user_instructions',
+        'runtime_context',
+        'workspace_instructions',
+        'agents_instructions',
+      ],
       action: {
         type: 'command',
         command,
         subcommand: 'ai',
         arguments: { prompt: '' },
-        options: {},
+        options: { save_selections: true },
         recordInTimeline: true,
         refresh: {
           command: r.command,
@@ -716,6 +828,25 @@ function buildListAiCommandForm(representation: ListRepresentation): WebNode {
       },
       {
         type: 'element',
+        tag: 'row',
+        props: { gap: 'xs', itemAlign: 'center' },
+        children: [
+          {
+            type: 'text',
+            value: `Backend ${backend}, Model ${model}`,
+          },
+          linkButton('Manage', todoSettingsAction(command)),
+        ],
+      },
+      aiIncludeOption({
+        name: 'include_user_instructions',
+        checked: settings.includeUserInstructions,
+        linkLabel: 'Todo User Instructions',
+        action: todoSettingsAction(command),
+        suffix: settings.userInstructions ? null : '(empty)',
+      }),
+      {
+        type: 'element',
         tag: 'textArea',
         props: {
           formFieldName: 'prompt',
@@ -725,6 +856,27 @@ function buildListAiCommandForm(representation: ListRepresentation): WebNode {
           storyTargetId: 'todo-ai-prompt-text',
         },
       },
+      aiIncludeOption({
+        name: 'runtime_context',
+        checked: settings.runtimeContext,
+        linkLabel: 'Runtime Context',
+        action: aiConfigurationAction(),
+        suffix: null,
+      }),
+      aiIncludeOption({
+        name: 'workspace_instructions',
+        checked: settings.workspaceInstructions,
+        linkLabel: 'Workspace Instructions',
+        action: aiConfigurationAction(),
+        suffix: null,
+      }),
+      aiIncludeOption({
+        name: 'agents_instructions',
+        checked: settings.agentsInstructions,
+        linkLabel: 'AGENTS.md Instructions',
+        action: aiConfigurationAction(),
+        suffix: null,
+      }),
       {
         type: 'element',
         tag: 'row',
@@ -1717,7 +1869,7 @@ function renderFlatTodoItem(
 
 export function renderListWeb(
   representation: ListRepresentation,
-  _context: WebRenderContext,
+  context: TodoListWebContext,
 ): WebNodeRoot {
   const treeChildren: WebNode[] = [];
 
@@ -1808,7 +1960,7 @@ export function renderListWeb(
   }
 
   treeChildren.push(buildRootTodoAddControls(representation));
-  treeChildren.push(buildListAiCommandForm(representation));
+  treeChildren.push(buildListAiCommandForm(representation, context));
 
   return {
     kind: 'ui',

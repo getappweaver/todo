@@ -1,11 +1,11 @@
 import type { Database } from 'bun:sqlite';
 
-import type { AgentRunResult } from '@src/backends/types';
 import { getOutputString } from '@src/backends/types';
-import type { PromptFn, RunAgentFn } from '@src/core/plugin';
+import type { PluginAgentService, PromptFn } from '@src/core/plugin';
 import type { MessageSource } from '@src/messaging';
 import { PROMPT_SESSION_EXIT } from '@src/prompt-session';
 
+import { runTodoAgent } from '../../agent';
 import { parseTodoToolCalls } from '../../ai/parse';
 import { buildSystemPrompt } from '../../ai/prompt';
 import type { TodoToolCall } from '../../ai/schema';
@@ -189,7 +189,7 @@ async function reviseCreateDraft(params: {
   db: Database;
   draft: TodoDraftRow;
   corrections: string;
-  runAgent: (prompt: string) => Promise<AgentRunResult>;
+  agent: PluginAgentService;
 }): Promise<string | null> {
   if (params.draft.kind !== 'create') {
     return `Draft #${params.draft.id} is a ${params.draft.kind} draft and cannot be revised interactively yet.`;
@@ -205,7 +205,11 @@ async function reviseCreateDraft(params: {
   const revisedPrompt = `Revise the following todo: "${params.draft.input.todo}". Correction: "${params.corrections}".`;
 
   const raw = getOutputString(
-    await params.runAgent(buildSystemPrompt(revisedPrompt, activeTree)),
+    await runTodoAgent({
+      agent: params.agent,
+      prompt: buildSystemPrompt(revisedPrompt, activeTree),
+      db: params.db,
+    }),
   );
 
   if (!raw || raw === '(no output)') {
@@ -244,7 +248,7 @@ export async function applyDraftSessionAction(params: {
   index: number;
   action: 'accept' | 'revise' | 'decline' | 'skip' | 'quit';
   input?: string;
-  runAgent?: RunAgentFn;
+  agent: PluginAgentService;
 }): Promise<string> {
   if (params.action === 'quit') {
     return `Session finished. Remaining drafts can be reviewed later with ${params.prefix}${params.alias} drafts.`;
@@ -271,10 +275,6 @@ export async function applyDraftSessionAction(params: {
   }
 
   if (params.action === 'revise') {
-    if (!params.runAgent) {
-      return 'Revise requires an agent backend.';
-    }
-
     const corrections = params.input?.trim();
 
     if (!corrections) {
@@ -285,7 +285,7 @@ export async function applyDraftSessionAction(params: {
       db: params.db,
       draft,
       corrections,
-      runAgent: params.runAgent,
+      agent: params.agent,
     });
 
     if (error) {
@@ -366,7 +366,7 @@ export async function runAiDraftReviewSession(params: {
   db: Database;
   sessionId: string;
   source: MessageSource;
-  runAgent: RunAgentFn;
+  agent: PluginAgentService;
   promptFn: PromptFn;
 }): Promise<string> {
   let index = 0;
@@ -414,7 +414,7 @@ export async function runAiDraftReviewSession(params: {
       index,
       action: parsed.action,
       input: parsed.text,
-      runAgent: params.runAgent,
+      agent: params.agent,
     });
 
     if (parsed.action === 'quit') {

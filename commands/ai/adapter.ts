@@ -6,16 +6,13 @@ import { runAiDraftReviewSession } from './session';
 export async function adaptAiCommand(
   params: TodoCommandAdapterParams,
 ): Promise<string> {
-  if (!params.runAgent) {
-    return `${params.prefix}${params.alias} ai requires an agent backend. Set backend (e.g. ${params.prefix}backend opencode-sdk) and try again.`;
-  }
-
   const result = await handleAiCommand({
     prefix: params.prefix,
     alias: params.alias,
     db: params.db,
     arguments: params.parsed.arguments,
-    runAgent: params.runAgent,
+    options: params.parsed.options,
+    agent: params.agent,
   });
 
   if (result.type === 'error') {
@@ -32,7 +29,7 @@ export async function adaptAiCommand(
     db: params.db,
     sessionId: result.sessionId,
     source: params.source,
-    runAgent: params.runAgent,
+    agent: params.agent,
     promptFn: params.promptFn,
   });
 }

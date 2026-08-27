@@ -2,8 +2,8 @@ import type { Database } from 'bun:sqlite';
 
 import type {
   PluginIdentity,
+  PluginAgentService,
   PromptFn,
-  RunAgentFn,
   SendReplyFn,
 } from '@src/core/plugin';
 import type { MessageSource } from '@src/messaging';
@@ -25,6 +25,7 @@ import { adaptListCommand } from './commands/list/adapter';
 import { adaptMoveCommand } from './commands/move/adapter';
 import { adaptNextCommand } from './commands/next/adapter';
 import { adaptReviseCommand } from './commands/revise/adapter';
+import { adaptSettingsCommand } from './commands/settings/adapter';
 import { adaptShowCommand } from './commands/show/adapter';
 import { adaptStartCommand } from './commands/start/adapter';
 import { adaptUnfocusCommand } from './commands/unfocus/adapter';
@@ -35,6 +36,7 @@ import type { TodoCommandAdapterParams } from './types/adapter-params';
 type TodoSubcommand =
   | 'help'
   | 'ai'
+  | 'settings'
   | 'add'
   | 'drafts'
   | 'accept'
@@ -67,6 +69,7 @@ const normalizedDefinitions = new Map<
 const subcommandAdapters: Record<TodoSubcommand, TodoCommandAdapter> = {
   help: adaptHelpCommand,
   ai: adaptAiCommand,
+  settings: adaptSettingsCommand,
   add: adaptAddCommand,
   drafts: adaptDraftsCommand,
   accept: adaptAcceptCommand,
@@ -109,6 +112,7 @@ function isTodoSubcommand(value: string): value is TodoSubcommand {
   return (
     value === 'help' ||
     value === 'ai' ||
+    value === 'settings' ||
     value === 'add' ||
     value === 'drafts' ||
     value === 'accept' ||
@@ -144,7 +148,7 @@ export async function handleTodo(params: {
   alias: string;
   db: Database;
   identity: PluginIdentity;
-  runAgent: RunAgentFn | null;
+  agent: PluginAgentService;
   helpText: (alias: string, prefix: string) => string[];
   promptFn: PromptFn;
   sendReply: SendReplyFn;
@@ -187,7 +191,7 @@ export async function handleTodo(params: {
       source: params.source,
       parsed,
       command,
-      runAgent: params.runAgent,
+      agent: params.agent,
       sendReply: params.sendReply,
       promptFn: params.promptFn,
     });
