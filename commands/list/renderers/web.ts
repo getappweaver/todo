@@ -790,7 +790,9 @@ function buildListAiCommandForm(
     } satisfies PluginAgentDefaults);
 
   const backend = settings.backend ?? defaults.backend;
-  const model = context.effectiveModel ?? settings.model ?? defaults.effectiveModel;
+
+  const model =
+    context.effectiveModel ?? settings.model ?? defaults.effectiveModel;
 
   return {
     type: 'element',
