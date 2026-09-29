@@ -23,10 +23,6 @@ export async function runTodoAgent(props: {
   return props.agent.run({
     prompt: props.prompt,
     sessionId: null,
-    backend: settings.backend,
-    provider: null,
-    model: settings.model,
-    mode: null,
     workspaceTarget: null,
     cwd: null,
     onAgentStreamChunk: null,

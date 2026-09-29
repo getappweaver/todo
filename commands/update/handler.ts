@@ -49,7 +49,7 @@ export function handleUpdateCommand(params: {
 
   const value = parseRequiredString(params.arguments.value);
 
-  if (id === null || !field || !value) {
+  if (id === null || !field || (field !== 'description' && !value)) {
     return {
       type: 'error',
       message: `Usage: ${params.prefix}${params.alias} update <id> <field> <value...>`,
@@ -68,6 +68,13 @@ export function handleUpdateCommand(params: {
   switch (field) {
     case 'todo':
     case 'title': {
+      if (!value) {
+        return {
+          type: 'error',
+          message: 'Todo title cannot be empty.',
+        };
+      }
+
       const updated = updateTodo(params.db, { id, todo: value });
 
       return {
@@ -104,7 +111,27 @@ export function handleUpdateCommand(params: {
     }
 
     case 'description': {
-      const updated = updateTodo(params.db, { id, description: value });
+      const description =
+        typeof params.arguments.value === 'string'
+          ? params.arguments.value.trim()
+          : Array.isArray(params.arguments.value) &&
+              params.arguments.value.every(
+                (part): part is string => typeof part === 'string',
+              )
+            ? params.arguments.value.join(' ').trim()
+            : null;
+
+      if (description === null) {
+        return {
+          type: 'error',
+          message: 'Missing description value.',
+        };
+      }
+
+      const updated = updateTodo(params.db, {
+        id,
+        description: description || null,
+      });
 
       return {
         type: 'success',

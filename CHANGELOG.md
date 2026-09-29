@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.8.0] - 2026-09-29
+
+- feat: todo item detail modal is introduced, uses workspace-file-view to open files in details view (5c58ed5)
+
 ## [v5.7.1] - 2026-08-27
 
-- fix: lint (0059d59)
+- fix: lint (20877ff)
 
 ## [v5.7.0] - 2026-08-27
 

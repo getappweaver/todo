@@ -5,6 +5,7 @@ import type { WebAction, WebNode, WebNodeRoot } from '@src/web/ui-schema';
 import type { TodoAiSettings } from '../../../settings';
 
 import { buildTodoTree, renderTodoTreeItems } from '../../shared/tree-view';
+import { descriptionNodes } from '../../show/renderers/web';
 
 import type { ListItem, ListRepresentation } from '../representation/schema';
 
@@ -107,6 +108,16 @@ const todoListStylesheet = {
 
     .web-text.todo-item-id {
       white-space: nowrap;
+    }
+
+    .web-button.todo-details-trigger {
+      padding: 0 0.15rem;
+      min-width: 1.5rem;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      font-size: 0.9rem;
+      line-height: 1;
     }
 
     .web-overflow-trigger.todo-status-trigger {
@@ -785,7 +796,6 @@ function buildListAiCommandForm(
       provider: 'local',
       model: null,
       effectiveModel: 'opencode/big-pickle',
-      mode: 'ask',
       workspaceTarget: 'parent',
     } satisfies PluginAgentDefaults);
 
@@ -1509,6 +1519,24 @@ function copyToClipboardAction(text: string): WebAction {
   };
 }
 
+function todoDetailsAction(
+  representation: ListRepresentation,
+  item: ListItem,
+): WebAction {
+  return {
+    type: 'command',
+    command: representation.meta.command,
+    subcommand: 'show',
+    arguments: { id: item.id },
+    options: {
+      listContext: JSON.stringify(representation.data.listInvocation),
+    },
+    surface: 'modal',
+    modalTitle: `Todo #${item.id} details`,
+    recordInTimeline: false,
+  };
+}
+
 function todoItemVisibleSubtreeText(
   representation: ListRepresentation,
   item: ListItem,
@@ -1644,6 +1672,14 @@ function renderTodoRowActionsMenu(
         type: 'element',
         tag: 'menuItem',
         props: {
+          label: 'Details…',
+          action: todoDetailsAction(representation, item),
+        },
+      },
+      {
+        type: 'element',
+        tag: 'menuItem',
+        props: {
           label: 'Update…',
           action: revealInlineAddFormAction(
             inlineUpdateRevealId(item.id),
@@ -1715,6 +1751,21 @@ function renderTodoItemRow(
             size: 'sm',
           },
         },
+        ...(item.description?.trim()
+          ? [
+              {
+                type: 'element' as const,
+                tag: 'button' as const,
+                props: {
+                  label: '👀',
+                  ariaLabel: `View details for #${item.id}`,
+                  title: `View details for #${item.id}`,
+                  className: 'todo-details-trigger',
+                  action: todoDetailsAction(representation, item),
+                },
+              },
+            ]
+          : []),
       ],
     },
   ];
@@ -1728,7 +1779,7 @@ function renderTodoItemRow(
           tone: 'muted',
           size: 'sm',
         },
-        children: [{ type: 'text', value: line }],
+        children: descriptionNodes(line, representation.meta.command),
       });
     }
   }

@@ -1,9 +1,9 @@
 import type { Database } from 'bun:sqlite';
 
-import type { AgentBackendName } from '@src/db';
+type LegacyAgentBackendName = 'opencode' | 'cursor';
 
 export type TodoAiSettings = {
-  backend: AgentBackendName | null;
+  backend: LegacyAgentBackendName | null;
   model: string | null;
   runtimeContext: boolean;
   workspaceInstructions: boolean;
@@ -44,8 +44,8 @@ function set(db: Database, key: string, value: string | null): void {
   );
 }
 
-function backend(value: string | null): AgentBackendName | null {
-  return value === 'cursor' || value === 'opencode' ? value : null;
+function backend(value: string | null): LegacyAgentBackendName | null {
+  return value === 'cursor' || value === 'opencode' ? 'opencode' : null;
 }
 
 export function getTodoAiSettings(db: Database): TodoAiSettings {

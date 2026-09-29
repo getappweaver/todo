@@ -15,6 +15,15 @@ export const showDefinition = (
       required: true,
     },
   ],
-  options: [],
+  options: [
+    {
+      name: 'listContext',
+      summary: 'List invocation to refresh after editing from the web widget.',
+      flag: '--list-context',
+      kind: 'string',
+      required: false,
+      shortFlag: null,
+    },
+  ],
   examples: [`${prefix}${alias} show 42`],
 });

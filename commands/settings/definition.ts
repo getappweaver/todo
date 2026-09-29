@@ -15,7 +15,7 @@ export const settingsDefinition = (
       summary: 'Backend override for Todo AI.',
       kind: 'string',
       required: false,
-      choices: ['cursor', 'opencode'],
+      choices: ['opencode'],
     },
     {
       name: 'model',

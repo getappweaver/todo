@@ -48,7 +48,6 @@ export function adaptListCommand(
           effectiveModel: params.agent.getEffectiveModel({
             backend: aiSettings.backend,
             model: aiSettings.model,
-            mode: null,
             workspaceTarget: null,
           }),
         },
@@ -82,7 +81,6 @@ export function adaptListCommand(
       effectiveModel: params.agent.getEffectiveModel({
         backend: aiSettings.backend,
         model: aiSettings.model,
-        mode: null,
         workspaceTarget: null,
       }),
     });

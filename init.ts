@@ -63,7 +63,9 @@ export const TodoPlugin: BotPlugin = {
       identity: TodoPlugin.identity,
       agent: context.agent,
       helpText: TodoPlugin.helpText,
-      promptFn: context.promptFn ?? TodoPluginContext.promptFn,
+      promptFn:
+        context.promptFn ??
+        (() => Promise.reject(new Error('Interactive prompt unavailable.'))),
       sendReply: context.sendReply ?? TodoPluginContext.sendReply,
     });
   },

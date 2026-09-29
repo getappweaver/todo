@@ -38,11 +38,11 @@ function parseBackend(value: unknown): AgentBackendName | null | undefined {
     return null;
   }
 
-  if (value === 'cursor' || value === 'opencode') {
-    return value;
+  if (value === 'opencode') {
+    return 'opencode';
   }
 
-  throw new Error('Backend must be cursor or opencode.');
+  throw new Error('Backend must be opencode.');
 }
 
 function formatSettings(settings: TodoAiSettings): string {
@@ -105,7 +105,7 @@ function renderSettings(props: {
             {
               formFieldName: 'backend',
               value: props.settings.backend ?? 'default',
-              choices: ['default', 'cursor', 'opencode'],
+              choices: ['default', 'opencode'],
               choiceLabels: {
                 default: `current (${props.defaults.backend})`,
                 cursor: 'cursor',
