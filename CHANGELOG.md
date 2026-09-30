@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.8.1] - 2026-10-01
+
+- fix: show only champions filter and together with show flat (157ce0a)
+
 ## [v5.8.0] - 2026-09-29
 
-- feat: todo item detail modal is introduced, uses workspace-file-view to open files in details view (5c58ed5)
+- feat: todo item detail modal is introduced, uses workspace-file-view to open files in details view (409076f)
 
 ## [v5.7.1] - 2026-08-27
 

@@ -348,11 +348,55 @@ export function handleListCommand(params: {
   });
 
   if (championOnly) {
-    todos = todos.filter(
-      (todo) =>
+    const wanted = new Set<number>();
+
+    for (const todo of todos) {
+      if (
         champions.championIds.has(todo.id) ||
-        champions.priorityWinnerId === todo.id,
-    );
+        champions.priorityWinnerId === todo.id
+      ) {
+        wanted.add(todo.id);
+      }
+    }
+
+    const byId = new Map(todos.map((todo) => [todo.id, todo]));
+
+    if (!flat && level === null) {
+      for (const id of [...wanted]) {
+        let parentId = byId.get(id)?.parent_id ?? null;
+
+        while (parentId !== null && !wanted.has(parentId)) {
+          const parent = byId.get(parentId);
+
+          if (!parent) {
+            break;
+          }
+
+          wanted.add(parent.id);
+          parentId = parent.parent_id;
+        }
+      }
+    } else {
+      const ancestors = new Set<number>();
+
+      for (const id of [...wanted]) {
+        let parentId = byId.get(id)?.parent_id ?? null;
+
+        while (parentId !== null) {
+          if (wanted.has(parentId)) {
+            ancestors.add(parentId);
+          }
+
+          parentId = byId.get(parentId)?.parent_id ?? null;
+        }
+      }
+
+      for (const id of ancestors) {
+        wanted.delete(id);
+      }
+    }
+
+    todos = todos.filter((todo) => wanted.has(todo.id));
   }
 
   if (todos.length === 0) {
