@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.9.0] - 2026-10-07
+
+- chore: required changes for core v14 (62693cc)
+
 ## [v5.8.1] - 2026-10-01
 
-- fix: show only champions filter and together with show flat (157ce0a)
+- fix: show only champions filter and together with show flat (cfd0d2b)
 
 ## [v5.8.0] - 2026-09-29
 

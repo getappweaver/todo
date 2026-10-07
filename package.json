@@ -1,11 +1,11 @@
 {
   "name": "appweaver-todo-plugin",
-  "version": "5.8.1",
+  "version": "5.9.0",
   "appweaver": {
     "title": "Todo app",
     "icon": "./commands/list/renderers/list.svg",
     "website": "https://github.com/getappweaver/todo",
-    "coreApiVersion": "^13.2.0",
+    "coreApiVersion": "^14.0.0",
     "capabilities": {
       "uses": [
         {
