@@ -4,6 +4,7 @@ type LegacyAgentBackendName = 'opencode' | 'cursor';
 
 export type TodoAiSettings = {
   backend: LegacyAgentBackendName | null;
+  modelSource: string;
   model: string | null;
   runtimeContext: boolean;
   workspaceInstructions: boolean;
@@ -14,6 +15,7 @@ export type TodoAiSettings = {
 
 const KEYS = {
   backend: 'ai_backend',
+  modelSource: 'ai_model_source',
   model: 'ai_model',
   runtimeContext: 'ai_runtime_context',
   workspaceInstructions: 'ai_workspace_instructions',
@@ -51,6 +53,7 @@ function backend(value: string | null): LegacyAgentBackendName | null {
 export function getTodoAiSettings(db: Database): TodoAiSettings {
   return {
     backend: backend(get(db, KEYS.backend)),
+    modelSource: get(db, KEYS.modelSource) || 'core',
     model: get(db, KEYS.model),
     runtimeContext: get(db, KEYS.runtimeContext) === 'true',
     workspaceInstructions: get(db, KEYS.workspaceInstructions) === 'true',
@@ -65,6 +68,7 @@ export function saveTodoAiSettings(
   settings: TodoAiSettings,
 ): TodoAiSettings {
   set(db, KEYS.backend, settings.backend);
+  set(db, KEYS.modelSource, settings.modelSource.trim() || 'core');
   set(db, KEYS.model, settings.model);
   set(db, KEYS.runtimeContext, String(settings.runtimeContext));
 
@@ -86,6 +90,8 @@ export function resetTodoAiSettings(db: Database): TodoAiSettings {
   for (const key of Object.values(KEYS)) {
     set(db, key, null);
   }
+
+  set(db, KEYS.modelSource, 'core');
 
   return getTodoAiSettings(db);
 }

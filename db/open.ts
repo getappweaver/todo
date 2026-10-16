@@ -13,6 +13,11 @@ function migrateTodoSchema(db: Database): void {
   `);
 
   db.run(`
+    INSERT INTO todo_settings (key, value) VALUES ('ai_model_source', 'core')
+    ON CONFLICT(key) DO UPDATE SET value = 'core' WHERE value IS NULL OR trim(value) = ''
+  `);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS todo_comparisons (
       winner_id   INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
       loser_id    INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,

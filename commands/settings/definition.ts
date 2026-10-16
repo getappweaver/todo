@@ -18,6 +18,13 @@ export const settingsDefinition = (
       choices: ['opencode'],
     },
     {
+      name: 'model_source',
+      flag: '--source',
+      summary: 'Model source for Todo AI (default: core).',
+      kind: 'string',
+      required: false,
+    },
+    {
       name: 'model',
       flag: '--model',
       summary: 'Model override for Todo AI.',

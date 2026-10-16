@@ -781,6 +781,7 @@ function buildListAiCommandForm(
     context.aiSettings ??
     ({
       backend: null,
+      modelSource: 'core',
       model: null,
       runtimeContext: false,
       workspaceInstructions: false,
@@ -794,12 +795,14 @@ function buildListAiCommandForm(
     ({
       backend: 'opencode',
       provider: 'local',
+      modelSource: 'core',
       model: null,
       effectiveModel: 'opencode/big-pickle',
       workspaceTarget: 'parent',
     } satisfies PluginAgentDefaults);
 
   const backend = settings.backend ?? defaults.backend;
+  const source = settings.modelSource || defaults.modelSource || 'core';
 
   const model =
     context.effectiveModel ?? settings.model ?? defaults.effectiveModel;
@@ -845,7 +848,7 @@ function buildListAiCommandForm(
         children: [
           {
             type: 'text',
-            value: `Backend ${backend}, Model ${model}`,
+            value: `Backend ${backend}, Source ${source}, Model ${model}`,
           },
           linkButton('Manage', todoSettingsAction(command)),
         ],

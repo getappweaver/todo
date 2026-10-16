@@ -24,6 +24,8 @@ export async function runTodoAgent(props: {
     prompt: props.prompt,
     sessionId: null,
     workspaceTarget: null,
+    modelSourceId: settings.modelSource || 'core',
+    modelId: settings.model,
     cwd: null,
     onAgentStreamChunk: null,
     abortSignal: null,

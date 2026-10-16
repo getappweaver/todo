@@ -49,6 +49,7 @@ function formatSettings(settings: TodoAiSettings): string {
   return [
     'Todo AI settings:',
     `Backend: ${settings.backend ?? '(default)'}`,
+    `Model Source: ${settings.modelSource}`,
     `Model: ${settings.model ?? '(default)'}`,
     `Todo User Instructions: ${settings.userInstructions || '(empty)'}`,
   ].join('\n');
@@ -58,9 +59,25 @@ function renderSettings(props: {
   alias: string;
   settings: TodoAiSettings;
   defaults: ReturnType<TodoCommandAdapterParams['agent']['getDefaults']>;
+  sourceChoices: Array<{ alias: string; title: string }>;
   modelChoices: string[];
   message: string | null;
 }): WebNodeRoot {
+  const sources =
+    props.sourceChoices.length > 0
+      ? props.sourceChoices
+      : [{ alias: 'core', title: 'Core' }];
+
+  const sourceAliases = sources.map((s) => s.alias);
+
+  if (!sourceAliases.includes(props.settings.modelSource)) {
+    sourceAliases.push(props.settings.modelSource);
+  }
+
+  const sourceLabels = Object.fromEntries(
+    sources.map((s) => [s.alias, `${s.title} (${s.alias})`]),
+  );
+
   const models =
     props.settings.model && !props.modelChoices.includes(props.settings.model)
       ? [props.settings.model, ...props.modelChoices]
@@ -93,7 +110,12 @@ function renderSettings(props: {
         'form',
         {
           className: 'web-form web-form--stacked',
-          formOptionFieldNames: ['backend', 'model', 'user_instructions'],
+          formOptionFieldNames: [
+            'backend',
+            'model_source',
+            'model',
+            'user_instructions',
+          ],
           action,
         },
         [
@@ -111,6 +133,19 @@ function renderSettings(props: {
                 cursor: 'cursor',
                 opencode: 'opencode',
               },
+            },
+            [],
+          ),
+          element('text', { weight: 'semibold', size: 'sm' }, [
+            text('AI model source'),
+          ]),
+          element(
+            'select',
+            {
+              formFieldName: 'model_source',
+              value: props.settings.modelSource,
+              choices: sourceAliases,
+              choiceLabels: sourceLabels,
             },
             [],
           ),
@@ -174,6 +209,11 @@ export async function adaptSettingsCommand(
     message = 'Reset Todo AI settings.';
   } else {
     const backend = parseBackend(params.parsed.options.backend);
+
+    const modelSourceValue = optionalString(
+      params.parsed.options.model_source ?? params.parsed.options.source,
+    );
+
     const modelValue = optionalString(params.parsed.options.model);
     const model = modelValue === 'reset' ? null : modelValue;
 
@@ -183,6 +223,7 @@ export async function adaptSettingsCommand(
 
     const hasUpdates =
       backend !== undefined ||
+      modelSourceValue !== undefined ||
       model !== undefined ||
       userInstructions !== undefined;
 
@@ -190,6 +231,10 @@ export async function adaptSettingsCommand(
       settings = saveTodoAiSettings(params.db, {
         ...settings,
         backend: backend === undefined ? settings.backend : backend,
+        modelSource:
+          modelSourceValue === undefined
+            ? settings.modelSource
+            : modelSourceValue || 'core',
         model: model === undefined ? settings.model : model,
         userInstructions:
           userInstructions === undefined
@@ -205,14 +250,21 @@ export async function adaptSettingsCommand(
     return [message, formatSettings(settings)].filter(Boolean).join('\n\n');
   }
 
+  const sourceChoices =
+    (await params.agent.getAvailableModelSources?.().catch(() => [])) ?? [];
+
   const modelChoices = await params.agent
-    .getAvailableModels({ backend: settings.backend })
+    .getAvailableModels({
+      backend: settings.backend,
+      modelSourceId: settings.modelSource,
+    })
     .catch(() => []);
 
   return renderSettings({
     alias: params.alias,
     settings,
     defaults: params.agent.getDefaults(),
+    sourceChoices,
     modelChoices,
     message,
   });

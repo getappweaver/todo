@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.10.0] - 2026-10-16
+
+- feat: using model-source (3a9e695)
+
 ## [v5.9.0] - 2026-10-07
 
-- chore: required changes for core v14 (62693cc)
+- chore: required changes for core v14 (4e644fc)
 
 ## [v5.8.1] - 2026-10-01
 

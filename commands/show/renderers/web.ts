@@ -173,7 +173,7 @@ export function renderShowWeb(
       {
         id: 'todo-details',
         cssText: `
-          .web-stack.todo-details { min-width: min(28rem, 80vw); max-width: 52rem; }
+          .web-stack.todo-details { max-width: 52rem; }
           .web-text.todo-details-preview { overflow-wrap: anywhere; line-height: 1.5; }
           .web-form.todo-details-form { gap: 0.5rem; }
           .web-form.todo-details-form textarea { min-height: 8rem; width: 100%; }
