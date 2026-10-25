@@ -14,7 +14,10 @@ export type TodoStoryState = {
 
 export const emptyTodoItems = [] satisfies Todo[];
 
-type TodoStoryListItem = Todo | TodoWithWinStats;
+type TodoStoryListItem = (Todo | TodoWithWinStats) & {
+  isChampion?: boolean;
+  isPriorityWinner?: boolean;
+};
 
 export function buildTodoListStoryCommandOutput(params: {
   prefix: string;
@@ -61,6 +64,8 @@ export function buildTodoListStoryCommandOutput(params: {
         description: item.description,
         depth,
         ...stats,
+        isChampion: item.isChampion === true,
+        isPriorityWinner: item.isPriorityWinner === true,
       };
     }),
   });

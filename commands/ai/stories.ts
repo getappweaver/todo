@@ -31,7 +31,7 @@ const aiPromptItems = [
     todo: 'Prepare live demo notes',
     status: 'pending',
     sort_order: 2,
-    description: 'AI-created root item from the todo prompt workflow.',
+    description: null,
     tags: ['ai', 'demo'],
     source: 'demo',
     created_at: 1714004100,
@@ -44,7 +44,7 @@ const aiPromptItems = [
     todo: 'Schedule demo dry run',
     status: 'pending',
     sort_order: 1,
-    description: 'Child item created under the demo notes task.',
+    description: null,
     tags: ['ai', 'demo'],
     source: 'demo',
     created_at: 1714004200,
@@ -57,7 +57,7 @@ const aiPromptItems = [
     todo: 'Send demo recap to the team',
     status: 'pending',
     sort_order: 3,
-    description: 'AI-created root item from the todo prompt workflow.',
+    description: null,
     tags: ['ai', 'team'],
     source: 'demo',
     created_at: 1714004300,
@@ -70,13 +70,10 @@ const aiDraftReviewText = `AI drafted these todos:
 
 - Prepare launch checklist
 - Prepare live demo notes
-  AI-created root item from the todo prompt workflow.
   tags: ai, demo
   - Schedule demo dry run
-    Child item created under the demo notes task.
     tags: ai, demo
 - Send demo recap to the team
-  AI-created root item from the todo prompt workflow.
   tags: ai, team
 
 a=accept, r=revise, d=decline, s=skip, q=quit`;
@@ -87,13 +84,12 @@ export function buildAiPromptStory(params: {
 }): StoryDefinition<TodoStoryState> {
   const story: StoryDefinition<TodoStoryState> = {
     id: 'todo-add-ai-prompt',
-    title: 'Todo add via AI prompt',
-    description:
-      'Use the Todo widget AI prompt to create several todos at once.',
+    title: 'Review AI-proposed changes',
+    description: 'Prompt with intent.\nReview before commit.',
     showcase: {
-      title: 'AI drafts actions before changing data',
+      title: 'Prompt with intent.\nReview before commit.',
       description:
-        'Ask in natural language, inspect the proposed app changes, then accept only when the draft looks right.',
+        'Generate structured branches with **natural language**.\nAccept, revise, or decline with *zero risk*',
       timing: { initialDelayMs: 900, stepDelayMs: 2100, storyDelayMs: 2800 },
     },
     kind: 'ai',

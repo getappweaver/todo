@@ -54,7 +54,7 @@ const duelMarketingTodo = {
   todo: 'MARKETING',
   status: 'pending',
   sort_order: 1,
-  description: 'Marketing branch champion candidate.',
+  description: null,
   tags: ['demo', 'marketing'],
   source: 'demo',
   created_at: 1714005100,
@@ -68,7 +68,7 @@ const duelMarketingBlogTodo = {
   todo: 'blog',
   status: 'pending',
   sort_order: 1,
-  description: 'Blog branch item for marketing.',
+  description: null,
   tags: ['demo', 'blog'],
   source: 'demo',
   created_at: 1714005200,
@@ -82,7 +82,7 @@ const duelMarketingLandingTodo = {
   todo: 'landing page',
   status: 'pending',
   sort_order: 1,
-  description: 'Landing page branch item for marketing.',
+  description: null,
   tags: ['demo', 'landing-page'],
   source: 'demo',
   created_at: 1714005300,
@@ -96,7 +96,7 @@ const duelWalletTodo = {
   todo: 'WALLET',
   status: 'pending',
   sort_order: 2,
-  description: 'Wallet branch candidate.',
+  description: null,
   tags: ['demo', 'wallet'],
   source: 'demo',
   created_at: 1714005400,
@@ -110,7 +110,7 @@ const duelWalletImportTodo = {
   todo: 'import wallet',
   status: 'pending',
   sort_order: 1,
-  description: 'Import wallet branch item.',
+  description: null,
   tags: ['demo', 'wallet'],
   source: 'demo',
   created_at: 1714005500,
@@ -124,7 +124,7 @@ const duelMediaTodo = {
   todo: 'MEDIA',
   status: 'pending',
   sort_order: 3,
-  description: 'Another branch to make the tree feel real.',
+  description: null,
   tags: ['demo', 'media'],
   source: 'demo',
   created_at: 1714005600,
@@ -138,7 +138,7 @@ const duelMediaRecordTodo = {
   todo: 'record story playback states',
   status: 'pending',
   sort_order: 1,
-  description: 'Media branch item for story playback.',
+  description: null,
   tags: ['demo', 'stories'],
   source: 'demo',
   created_at: 1714005700,
@@ -152,7 +152,7 @@ const duelMarketingLocalFirstTodo = {
   todo: 'What does local-first mean?',
   status: 'pending',
   sort_order: 1,
-  description: 'Marketing branch item about local-first messaging.',
+  description: null,
   tags: ['demo', 'local-first'],
   source: 'demo',
   created_at: 1714005800,
@@ -166,7 +166,7 @@ const duelWalletConnectTodo = {
   todo: 'connect wallet',
   status: 'pending',
   sort_order: 1,
-  description: 'Wallet branch item for connection flows.',
+  description: null,
   tags: ['demo', 'wallet'],
   source: 'demo',
   created_at: 1714005900,
@@ -180,7 +180,7 @@ const duelWalletMultisigTodo = {
   todo: 'multisig setup',
   status: 'pending',
   sort_order: 1,
-  description: 'Wallet branch item for multisig onboarding.',
+  description: null,
   tags: ['demo', 'wallet'],
   source: 'demo',
   created_at: 1714006000,
@@ -194,7 +194,7 @@ const duelMediaThumbnailsTodo = {
   todo: 'add video thumbnails',
   status: 'pending',
   sort_order: 1,
-  description: 'Media branch item for visual previews.',
+  description: null,
   tags: ['demo', 'media'],
   source: 'demo',
   created_at: 1714006100,
@@ -208,7 +208,7 @@ const duelMediaPreviewTodo = {
   todo: 'improve preview',
   status: 'pending',
   sort_order: 1,
-  description: 'Media branch item for playback previews.',
+  description: null,
   tags: ['demo', 'media'],
   source: 'demo',
   created_at: 1714006200,
@@ -261,7 +261,7 @@ const duelFinalRankedItems = [
     losses: 1,
     win_rate: 0.75,
     isChampion: true,
-    isPriorityWinner: true,
+    isPriorityWinner: false,
   },
   {
     ...duelMarketingLandingTodo,
@@ -325,7 +325,7 @@ const duelFinalRankedItems = [
     losses: 0,
     win_rate: 1,
     isChampion: true,
-    isPriorityWinner: false,
+    isPriorityWinner: true,
   },
   {
     ...duelMediaThumbnailsTodo,
@@ -600,13 +600,12 @@ export function buildDuelStory(params: {
 }): StoryDefinition<TodoStoryState> {
   const story: StoryDefinition<TodoStoryState> = {
     id: 'todo-duel-prioritize',
-    title: 'Prioritize todos',
-    description:
-      'Use the Todo prioritize widget to pick branch champions and compare representatives.',
+    title: 'Prioritize with duels',
+    description: 'Stop debating.\nStart dueling.',
     showcase: {
-      title: 'Interactive widgets can guide app workflows',
+      title: 'Stop debating.\nStart dueling.',
       description:
-        'Prioritize asks for branch champions, then uses two focused A/B duels to find the winner.',
+        'Pairwise choices reveal your **true priorities**.\nTurn messy backlogs into an *ordered plan*',
       timing: { initialDelayMs: 900, stepDelayMs: 1900, storyDelayMs: 2600 },
     },
     kind: 'command',
@@ -634,7 +633,12 @@ export function buildDuelStory(params: {
             parentId: duelMarketingTodo.id,
             parentPath: [duelMarketingTodo.todo],
             currentParentId: duelMarketingTodo.id,
-            rootChampionSelections: new Map(),
+            rootChampionSelections: buildRootChampionSelections({
+              entries: [
+                [duelWalletTodo.id, duelWalletImportTodo.id],
+                [duelMediaTodo.id, duelMediaRecordTodo.id],
+              ],
+            }),
             choices: [
               {
                 ...duelMarketingBlogTodo,
@@ -650,55 +654,6 @@ export function buildDuelStory(params: {
               },
             ],
           }),
-          buildChampionPickStoryOutput({
-            alias: params.alias,
-            parentId: duelWalletTodo.id,
-            parentPath: [duelWalletTodo.todo],
-            currentParentId: duelWalletTodo.id,
-            rootChampionSelections: buildRootChampionSelections({
-              entries: [[duelMarketingTodo.id, duelMarketingBlogTodo.id]],
-            }),
-            choices: [
-              {
-                ...duelWalletImportTodo,
-                storyTargetId: 'todo-champion-pick-2',
-              },
-              {
-                ...duelWalletConnectTodo,
-                storyTargetId: null,
-              },
-              {
-                ...duelWalletMultisigTodo,
-                storyTargetId: null,
-              },
-            ],
-          }),
-          buildChampionPickStoryOutput({
-            alias: params.alias,
-            parentId: duelMediaTodo.id,
-            parentPath: [duelMediaTodo.todo],
-            currentParentId: duelMediaTodo.id,
-            rootChampionSelections: buildRootChampionSelections({
-              entries: [
-                [duelMarketingTodo.id, duelMarketingBlogTodo.id],
-                [duelWalletTodo.id, duelWalletImportTodo.id],
-              ],
-            }),
-            choices: [
-              {
-                ...duelMediaRecordTodo,
-                storyTargetId: 'todo-champion-pick-3',
-              },
-              {
-                ...duelMediaThumbnailsTodo,
-                storyTargetId: null,
-              },
-              {
-                ...duelMediaPreviewTodo,
-                storyTargetId: null,
-              },
-            ],
-          }),
           buildDuelQuestionStoryOutput({
             alias: params.alias,
             questionIndex: 1,
@@ -709,6 +664,7 @@ export function buildDuelStory(params: {
               entries: [
                 [duelMarketingTodo.id, duelMarketingBlogTodo.id],
                 [duelWalletTodo.id, duelWalletImportTodo.id],
+                [duelMediaTodo.id, duelMediaRecordTodo.id],
               ],
             }),
           }),
@@ -817,46 +773,6 @@ export function buildDuelStory(params: {
       },
       {
         type: 'instruction',
-        text: 'Pick the champion inside the WALLET branch.',
-      },
-      {
-        type: 'focus_target',
-        target: { type: 'web_node', targetId: 'todo-champion-pick-2' },
-      },
-      {
-        type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'todo-champion-pick-2' },
-      },
-      {
-        type: 'wait_for_action',
-        match: {
-          type: 'command_completed',
-          command: params.alias,
-          subcommand: 'duel',
-        },
-      },
-      {
-        type: 'instruction',
-        text: 'Pick the champion inside the MEDIA branch.',
-      },
-      {
-        type: 'focus_target',
-        target: { type: 'web_node', targetId: 'todo-champion-pick-3' },
-      },
-      {
-        type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'todo-champion-pick-3' },
-      },
-      {
-        type: 'wait_for_action',
-        match: {
-          type: 'command_completed',
-          command: params.alias,
-          subcommand: 'duel',
-        },
-      },
-      {
-        type: 'instruction',
         text: 'Now duel the first two branch champions.',
         showcase: {
           title: 'Priority duels use representatives',
@@ -891,11 +807,11 @@ export function buildDuelStory(params: {
       },
       {
         type: 'focus_target',
-        target: { type: 'web_node', targetId: 'todo-duel-answer-2-A' },
+        target: { type: 'web_node', targetId: 'todo-duel-answer-2-B' },
       },
       {
         type: 'wait_for_action',
-        match: { type: 'target_clicked', targetId: 'todo-duel-answer-2-A' },
+        match: { type: 'target_clicked', targetId: 'todo-duel-answer-2-B' },
       },
       {
         type: 'wait_for_action',

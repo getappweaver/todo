@@ -78,8 +78,8 @@ const todoListStylesheet = {
     }
 
     .web-row.todo-item-main-row {
-      align-items: flex-start;
-      gap: 0.35rem;
+      align-items: center;
+      gap: 0.25rem;
     }
 
     .web-row.todo-item-row .web-text.todo-item-title {
@@ -111,13 +111,14 @@ const todoListStylesheet = {
     }
 
     .web-button.todo-details-trigger {
-      padding: 0 0.15rem;
-      min-width: 1.5rem;
+      padding: 0;
+      min-width: auto;
       background: transparent;
       border: 0;
       box-shadow: none;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       line-height: 1;
+      cursor: pointer;
     }
 
     .web-overflow-trigger.todo-status-trigger {
@@ -234,7 +235,7 @@ const todoListStylesheet = {
     }
 
     .web-row.todo-status-filter-status-options {
-      margin-bottom: 1rem;
+      margin-bottom: 0.45rem;
     }
 
     .web-button.todo-status-filter-choice {
@@ -577,6 +578,7 @@ function booleanFilterChoiceNode(params: {
     props: {
       label: params.label,
       className: `todo-status-filter-choice${checked ? ' is-selected' : ''}`,
+      storyTargetId: `todo-filter-${params.optionName}`,
       action: booleanListOptionAction({
         representation: params.representation,
         optionName: params.optionName,
@@ -1272,7 +1274,7 @@ function buildRootTodoAddControls(representation: ListRepresentation): WebNode {
   return {
     type: 'element',
     tag: 'stack',
-    props: { gap: 'xs' },
+    props: { gap: 'xs', className: 'todo-root-add-stack' },
     children: [
       {
         type: 'element',
@@ -1745,22 +1747,26 @@ function renderTodoItemRow(
             },
           ],
         },
-        {
-          type: 'element',
-          tag: 'badge',
-          props: {
-            label: scoreLabel(),
-            tone: 'muted',
-            size: 'sm',
-          },
-        },
+        ...(scoreLabel()
+          ? [
+              {
+                type: 'element' as const,
+                tag: 'badge' as const,
+                props: {
+                  label: scoreLabel()!,
+                  tone: 'muted' as const,
+                  size: 'sm' as const,
+                },
+              },
+            ]
+          : []),
         ...(item.description?.trim()
           ? [
               {
                 type: 'element' as const,
                 tag: 'button' as const,
                 props: {
-                  label: '👀',
+                  label: '📝',
                   ariaLabel: `View details for #${item.id}`,
                   title: `View details for #${item.id}`,
                   className: 'todo-details-trigger',
@@ -1976,6 +1982,7 @@ export function renderListWeb(
               label: 'Show items',
               icon: 'checklist',
               action: toggleRevealAction(STATUS_FILTER_REVEAL_ID),
+              storyTargetId: 'todo-list-filter-toggle',
             },
             {
               label: 'Copy visible board',
@@ -1993,7 +2000,11 @@ export function renderListWeb(
           itemIdPrefix: 'todo-tree-item-',
           itemUi: 'todo-tree-item',
           childrenClassName: 'todo-tree-children',
-          defaultExpandedIds: new Set(),
+          defaultExpandedIds: new Set(
+            representation.data.items
+              .map((it) => it.parentId)
+              .filter((p): p is number => p !== null),
+          ),
           storyTargetPrefix: 'todo-tree-toggle-',
         }),
       });
