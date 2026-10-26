@@ -19,6 +19,7 @@ import { aiDefinition } from './ai';
 import { openDb } from './db/open';
 import { commandDefinition } from './definition';
 import { getTodoHelpLines } from './help';
+import { todoSearchProviders } from './search-provider';
 import { todoStories } from './stories';
 
 const pluginDir = import.meta.dir;
@@ -80,6 +81,17 @@ export const TodoPlugin: BotPlugin = {
     ...getTodoHelpLines(prefix, alias),
   ],
   aiDefinition,
+  capabilityProviders: todoSearchProviders({
+    alias,
+    pluginName: todoPkg.name,
+    getDb: () => {
+      if (!TodoPluginDb) {
+        throw new Error('Todos not initialized.');
+      }
+
+      return TodoPluginDb;
+    },
+  }),
   commandDefinition,
   stories: todoStories,
 };

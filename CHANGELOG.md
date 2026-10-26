@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v5.11.0] - 2026-10-26
+
+- feat: implemented universal search via search.v1 capability (b135374)
+
 ## [v5.10.1] - 2026-10-25
 
-- chore: updated stories for the new landing page video pipeline (02ee3ab)
+- chore: updated stories for the new landing page video pipeline (9e61261)
 
 ## [v5.10.0] - 2026-10-16
 

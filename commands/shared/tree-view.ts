@@ -31,6 +31,7 @@ export type RenderTodoTreeItemsProps<TItem extends TodoTreeViewItem> = {
   itemUi: string;
   childrenClassName: string;
   defaultExpandedIds: Set<number>;
+  focusedItemId: number | null;
   storyTargetPrefix: string | null;
 };
 
@@ -42,6 +43,7 @@ type RenderTodoTreeItemProps<TItem extends TodoTreeViewItem> = {
   itemUi: string;
   childrenClassName: string;
   defaultExpandedIds: Set<number>;
+  focusedItemId: number | null;
   storyTargetPrefix: string | null;
 };
 
@@ -94,6 +96,7 @@ function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
   itemUi,
   childrenClassName,
   defaultExpandedIds,
+  focusedItemId,
   storyTargetPrefix,
 }: RenderTodoTreeItemProps<TItem>): WebNode {
   const item = node.item;
@@ -108,6 +111,7 @@ function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
       filterName: item.text,
       filterPath: `${item.id}`,
       defaultExpanded: defaultExpandedIds.has(item.id),
+      ...(focusedItemId === item.id ? { focused: true } : {}),
       ...(storyTargetPrefix === null
         ? {}
         : { storyTargetId: `${storyTargetPrefix}${item.id}` }),
@@ -133,6 +137,7 @@ function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
                 itemUi,
                 childrenClassName,
                 defaultExpandedIds,
+                focusedItemId,
                 storyTargetPrefix,
               }),
             },
@@ -150,6 +155,7 @@ export function renderTodoTreeItems<TItem extends TodoTreeViewItem>({
   itemUi,
   childrenClassName,
   defaultExpandedIds,
+  focusedItemId,
   storyTargetPrefix,
 }: RenderTodoTreeItemsProps<TItem>): WebNode[] {
   return nodes.map((node) =>
@@ -161,6 +167,7 @@ export function renderTodoTreeItems<TItem extends TodoTreeViewItem>({
       itemUi,
       childrenClassName,
       defaultExpandedIds,
+      focusedItemId,
       storyTargetPrefix,
     }),
   );

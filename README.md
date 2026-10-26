@@ -8,7 +8,7 @@ Todo list management: hierarchical todos, drafts, and AI-assisted revise.
 
 See the [feature inventory](FEATURES.md) for stable feature IDs, supported
 surfaces, and implementation references. The first lightweight animation pilot
-is champions filtering; its [implementation plan](landing/FEATURE_MEDIA_PLAN.md)
+is champions filtering; its [implementation plan](docs/FEATURE_MEDIA_PLAN.md)
 tracks sanitized captures, standalone CSS/JS playback, and optional video export.
 The inventory is not yet consumed by the landing generator.
 

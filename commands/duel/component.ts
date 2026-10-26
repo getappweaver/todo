@@ -244,6 +244,7 @@ function renderTodoTree(item: DuelTodoItem): WebNode[] {
     itemUi: 'todo-duel-tree-item',
     childrenClassName: 'todo-duel-children',
     defaultExpandedIds: new Set(),
+    focusedItemId: null,
     storyTargetPrefix: null,
   });
 }
@@ -566,6 +567,7 @@ function renderChampionChoiceTree(props: {
       itemUi: 'todo-tree-item',
       childrenClassName: 'todo-champion-tree-children',
       defaultExpandedIds,
+      focusedItemId: null,
       storyTargetPrefix: 'todo-champion-tree-toggle-',
     }),
   };

@@ -37,6 +37,7 @@ type TodoListWebContext = WebRenderContext & {
   aiSettings?: TodoAiSettings;
   agentDefaults?: PluginAgentDefaults;
   effectiveModel?: string;
+  focusedTodoId?: number | null;
 };
 
 const TODO_TEXT_STATUS: Record<ListItem['status'], string> = {
@@ -2005,6 +2006,7 @@ export function renderListWeb(
               .map((it) => it.parentId)
               .filter((p): p is number => p !== null),
           ),
+          focusedItemId: context.focusedTodoId ?? null,
           storyTargetPrefix: 'todo-tree-toggle-',
         }),
       });

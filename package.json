@@ -1,18 +1,29 @@
 {
   "name": "appweaver-todo-plugin",
-  "version": "5.10.1",
+  "version": "5.11.0",
   "appweaver": {
     "title": "Todo app",
     "icon": "./commands/list/renderers/list.svg",
     "website": "https://github.com/getappweaver/todo",
-    "coreApiVersion": "^14.4.0",
+    "coreApiVersion": "^14.13.0",
     "capabilities": {
+      "provides": [
+        {
+          "name": "search",
+          "version": 1
+        },
+        {
+          "name": "resource-view",
+          "version": 1
+        }
+      ],
       "uses": [
         {
           "name": "workspace-file-view",
           "version": 1
         }
-      ]
+      ],
+      "requires": []
     },
     "description": "Official AppWeaver Todo app. Adds focused AI-powered todo tools, commands, and data models to an AppWeaver workspace."
   },

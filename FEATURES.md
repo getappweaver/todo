@@ -1,7 +1,7 @@
 # Todo features
 
 Todo-owned public feature inventory. Start the animation pilot with
-`todo.filter-champions`; follow the [media implementation plan](landing/FEATURE_MEDIA_PLAN.md).
+`todo.filter-champions`; follow the [media implementation plan](docs/FEATURE_MEDIA_PLAN.md).
 Implementation references below describe current behavior, not proposed behavior.
 
 ## Metadata convention

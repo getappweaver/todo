@@ -280,7 +280,12 @@ export function handleListCommand(params: {
   options: Record<string, unknown>;
 }): ListCommandResult {
   const explicitRootId = parseOptionalInteger(params.arguments.rootId);
-  const rootId = explicitRootId ?? getFocusId(params.db);
+
+  const rootId =
+    params.arguments.rootId === null
+      ? null
+      : (explicitRootId ?? getFocusId(params.db));
+
   const filters = parseOptionalFilters(params.options.status);
   const flat = parseOptionalBoolean(params.options.flat);
   const championOnly = parseOptionalBoolean(params.options.champion);
