@@ -165,6 +165,26 @@ export function renderShowWeb(
       : { surface: 'timeline', refresh }),
   };
 
+  const deleteDetailsAction: WebAction = {
+    type: 'command',
+    command: representation.meta.command,
+    subcommand: 'update',
+    arguments: { id: item.id, field: 'description', value: '' },
+    options: {},
+    recordInTimeline: false,
+    ...(refresh === null
+      ? {
+          refresh: {
+            command: representation.meta.command,
+            subcommand: 'show',
+            arguments: { id: item.id },
+            options: {},
+            recordInTimeline: false,
+          },
+        }
+      : { surface: 'timeline', refresh }),
+  };
+
   return {
     kind: 'ui',
     version: 1,
@@ -219,8 +239,28 @@ export function renderShowWeb(
             },
             {
               type: 'element',
-              tag: 'button',
-              props: { label: 'Save details', htmlType: 'submit' },
+              tag: 'row',
+              props: { className: 'web-form__actions', gap: 'xs' },
+              children: [
+                {
+                  type: 'element',
+                  tag: 'button',
+                  props: { label: 'Save details', htmlType: 'submit' },
+                },
+                ...(item.description?.trim()
+                  ? [
+                      {
+                        type: 'element' as const,
+                        tag: 'button' as const,
+                        props: {
+                          label: 'Delete details',
+                          tone: 'danger' as const,
+                          action: deleteDetailsAction,
+                        },
+                      },
+                    ]
+                  : []),
+              ],
             },
           ],
         },

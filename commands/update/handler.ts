@@ -121,13 +121,6 @@ export function handleUpdateCommand(params: {
             ? params.arguments.value.join(' ').trim()
             : null;
 
-      if (description === null) {
-        return {
-          type: 'error',
-          message: 'Missing description value.',
-        };
-      }
-
       const updated = updateTodo(params.db, {
         id,
         description: description || null,

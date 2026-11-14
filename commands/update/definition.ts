@@ -22,9 +22,10 @@ export const updateDefinition = (
     },
     {
       name: 'value',
-      summary: 'New value for the selected field.',
+      summary:
+        'New value for the selected field (optional for description to clear it).',
       kind: 'string',
-      required: true,
+      required: false,
       variadic: true,
     },
   ],
@@ -33,5 +34,6 @@ export const updateDefinition = (
     `${prefix}${alias} update 42 todo buy oat milk`,
     `${prefix}${alias} update 42 status in_progress`,
     `${prefix}${alias} update 42 description blocked on review`,
+    `${prefix}${alias} update 42 description`,
   ],
 });

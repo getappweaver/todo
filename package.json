@@ -1,6 +1,6 @@
 {
   "name": "appweaver-todo-plugin",
-  "version": "5.11.0",
+  "version": "5.12.0",
   "appweaver": {
     "title": "Todo app",
     "icon": "./commands/list/renderers/list.svg",

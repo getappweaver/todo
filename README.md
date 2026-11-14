@@ -16,13 +16,13 @@ The inventory is not yet consumed by the landing generator.
 
 [Interactive Demo](https://getappweaver.com/apps/todo)
 
-![Create todos with AI](https://getappweaver.com/gifs/todo-add-by-ai.gif)
+![Create todos with AI](landing/assets/todo-add-by-ai.gif)
 
-![Create todos with AI on mobile](https://getappweaver.com/gifs/todo-add-by-ai-mobile.gif)
+![Create todos with AI on mobile](landing/assets/todo-add-by-ai-mobile.gif)
 
-![Add todos on mobile](https://getappweaver.com/gifs/todo-add-mobile.gif)
+![Add todos on mobile](landing/assets/todo-add-mobile.gif)
 
-![Prioritize todos with duels](https://getappweaver.com/gifs/todo-duel-mobile.gif)
+![Prioritize todos with duels](landing/assets/todo-duel-mobile.gif)
 
 ## Commands
 
