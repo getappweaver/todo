@@ -197,6 +197,9 @@ export function todoSearchProviders({
                     options: listOptions,
                   },
                   priorityPrompt: listResult.priorityPrompt,
+                  prioritizing: listResult.prioritizing,
+                  orderRevision: listResult.orderRevision,
+                  activeRootIds: listResult.activeRootIds,
                   items: listResult.items,
                 })
               : createListRepresentation({
@@ -210,6 +213,9 @@ export function todoSearchProviders({
                     options: listOptions,
                   },
                   priorityPrompt: null,
+                  prioritizing: false,
+                  orderRevision: '',
+                  activeRootIds: [],
                   items: [],
                 });
 

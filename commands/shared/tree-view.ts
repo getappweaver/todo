@@ -33,6 +33,7 @@ export type RenderTodoTreeItemsProps<TItem extends TodoTreeViewItem> = {
   defaultExpandedIds: Set<number>;
   focusedItemId: number | null;
   storyTargetPrefix: string | null;
+  reorderIds: Set<number> | null;
 };
 
 type RenderTodoTreeItemProps<TItem extends TodoTreeViewItem> = {
@@ -45,6 +46,7 @@ type RenderTodoTreeItemProps<TItem extends TodoTreeViewItem> = {
   defaultExpandedIds: Set<number>;
   focusedItemId: number | null;
   storyTargetPrefix: string | null;
+  reorderIds: Set<number> | null;
 };
 
 export function buildTodoTree<TItem extends TodoTreeViewItem>({
@@ -98,6 +100,7 @@ function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
   defaultExpandedIds,
   focusedItemId,
   storyTargetPrefix,
+  reorderIds,
 }: RenderTodoTreeItemProps<TItem>): WebNode {
   const item = node.item;
 
@@ -115,6 +118,9 @@ function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
       ...(storyTargetPrefix === null
         ? {}
         : { storyTargetId: `${storyTargetPrefix}${item.id}` }),
+      ...(reorderIds !== null && reorderIds.has(item.id)
+        ? { reorderKey: String(item.id) }
+        : {}),
     },
     summary: renderSummary(item),
     children: [
@@ -139,6 +145,7 @@ function renderTodoTreeItem<TItem extends TodoTreeViewItem>({
                 defaultExpandedIds,
                 focusedItemId,
                 storyTargetPrefix,
+                reorderIds: null,
               }),
             },
           ]
@@ -157,6 +164,7 @@ export function renderTodoTreeItems<TItem extends TodoTreeViewItem>({
   defaultExpandedIds,
   focusedItemId,
   storyTargetPrefix,
+  reorderIds,
 }: RenderTodoTreeItemsProps<TItem>): WebNode[] {
   return nodes.map((node) =>
     renderTodoTreeItem({
@@ -169,6 +177,7 @@ export function renderTodoTreeItems<TItem extends TodoTreeViewItem>({
       defaultExpandedIds,
       focusedItemId,
       storyTargetPrefix,
+      reorderIds,
     }),
   );
 }

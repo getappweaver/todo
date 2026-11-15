@@ -13,6 +13,9 @@ export function createListRepresentation(params: {
     options: Record<string, unknown>;
   };
   priorityPrompt: ListRepresentation['data']['priorityPrompt'];
+  prioritizing: boolean;
+  orderRevision: string;
+  activeRootIds: number[];
   items: z.input<typeof ListItemSchema>[];
 }): ListRepresentation {
   return {
@@ -28,6 +31,9 @@ export function createListRepresentation(params: {
       showDescriptions: params.showDescriptions,
       listInvocation: params.listInvocation,
       priorityPrompt: params.priorityPrompt,
+      prioritizing: params.prioritizing,
+      orderRevision: params.orderRevision,
+      activeRootIds: params.activeRootIds,
       items: params.items.map((item) => ListItemSchema.parse(item)),
     },
   };

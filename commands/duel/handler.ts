@@ -26,11 +26,7 @@ import {
   formatLeafWithAncestorPath,
 } from './renderers/text';
 import { createDuelPrompt } from './renderers/web';
-import type {
-  DuelPromptOption,
-  RankedTodo,
-  SendReplyFn,
-} from './representation';
+import type { DuelPromptOption, SendReplyFn } from './representation';
 import { handleDuelWebAction } from './web';
 
 function promptPayload(params: {
@@ -215,44 +211,6 @@ export async function maybeOfferDuelAfterAdd(props: {
   return null;
 }
 
-async function maybePromptDuelForUnscored(props: {
-  db: Database;
-  parentId: number | null;
-  source: MessageSource;
-  sendReply: SendReplyFn;
-  promptFn: PromptFn;
-  unscored: RankedTodo[];
-}): Promise<string | null> {
-  const { db, parentId, source, sendReply, promptFn, unscored } = props;
-
-  if (unscored.length === 0) {
-    return null;
-  }
-
-  const answer = await promptFn(
-    promptPayload({
-      source,
-      text: `⚠ ${unscored.length} item(s) have no comparisons yet.\nScore them now for better results? (yes/no)\n(If skipped, unscored items are treated as lowest priority.)`,
-      options: [
-        { label: 'Yes', value: 'yes', tone: 'success' },
-        { label: 'No', value: 'no', tone: 'muted' },
-      ],
-    }),
-  );
-
-  if (answer === PROMPT_SESSION_EXIT) {
-    return 'Cancelled.';
-  }
-
-  if (answer.toLowerCase().startsWith('y')) {
-    await startDuelSession({ db, parentId, source, sendReply, promptFn });
-
-    return 'Duel session finished.';
-  }
-
-  return null;
-}
-
 export async function handleDuelCommand(props: {
   args: string[];
   webArgs: string[];
@@ -268,7 +226,7 @@ export async function handleDuelCommand(props: {
   const parentId = getParentId(cleanArgs, db);
 
   if (webArgs.length > 0 && (source !== 'web' || webArgs[0] !== 'web')) {
-    return 'Usage: todo duel [parentId] [--reset]';
+    return 'Usage: todo pick [parentId] [--reset]';
   }
 
   if (source === 'web' && webArgs[0] === 'web') {
@@ -392,23 +350,9 @@ export async function handleCurrentCommand(props: {
   sendReply: SendReplyFn;
   promptFn: PromptFn;
 }): Promise<string> {
-  const { args, db, source, sendReply, promptFn } = props;
+  const { args, db } = props;
   const parentId = getParentId(args, db);
   const ranked = getRankedSiblings(db, parentId);
-
-  const duelEarly = await maybePromptDuelForUnscored({
-    db,
-    parentId,
-    source,
-    sendReply,
-    promptFn,
-    unscored: ranked.filter((todo) => todo.win_rate === null),
-  });
-
-  if (duelEarly !== null) {
-    return duelEarly;
-  }
-
   const leaves = collectLeavesInDFSOrder(db, ranked);
 
   if (leaves.length === 0) {
@@ -430,23 +374,9 @@ export async function handleNextCommand(props: {
   sendReply: SendReplyFn;
   promptFn: PromptFn;
 }): Promise<string> {
-  const { args, db, source, sendReply, promptFn } = props;
+  const { args, db } = props;
   const parentId = getParentId(args, db);
   const ranked = getRankedSiblings(db, parentId);
-
-  const duelEarly = await maybePromptDuelForUnscored({
-    db,
-    parentId,
-    source,
-    sendReply,
-    promptFn,
-    unscored: ranked.filter((todo) => todo.win_rate === null),
-  });
-
-  if (duelEarly !== null) {
-    return duelEarly;
-  }
-
   const leaves = collectLeavesInDFSOrder(db, ranked);
 
   if (leaves.length === 0) {

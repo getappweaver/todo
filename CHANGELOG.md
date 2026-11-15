@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v6.0.0] - 2026-11-15
+
+- feat: added reorder drag n drop replacement of dueling (f42c397)
+
 ## [v5.12.0] - 2026-11-14
 
-- feat: delete details was missing (f0fb267)
+- feat: delete details was missing (29594cc)
 
 ## [v5.11.0] - 2026-10-26
 

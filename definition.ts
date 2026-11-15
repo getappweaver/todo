@@ -14,6 +14,7 @@ import { focusDefinition } from './commands/focus/definition';
 import { listDefinition } from './commands/list/definition';
 import { moveDefinition } from './commands/move/definition';
 import { nextDefinition } from './commands/next/definition';
+import { orderDefinition } from './commands/order/definition';
 import { reviseDefinition } from './commands/revise/definition';
 import { settingsDefinition } from './commands/settings/definition';
 import { showDefinition } from './commands/show/definition';
@@ -43,6 +44,7 @@ export const commandDefinition = (
     currentDefinition(prefix, alias),
     nextDefinition(prefix, alias),
     listDefinition(prefix, alias),
+    orderDefinition(prefix, alias),
     moveDefinition(prefix, alias),
     doneDefinition(prefix, alias),
     deleteDefinition(prefix, alias),

@@ -47,6 +47,9 @@ export const ListDataSchema = z.object({
     options: z.record(z.string(), z.unknown()),
   }),
   priorityPrompt: ListPriorityPromptSchema.nullable().default(null),
+  prioritizing: z.boolean().default(false),
+  orderRevision: z.string().default(''),
+  activeRootIds: z.array(z.number().int().positive()).default([]),
   items: z.array(ListItemSchema),
 });
 

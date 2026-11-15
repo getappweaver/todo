@@ -4,8 +4,8 @@ export const duelDefinition = (
   prefix: string,
   alias: string,
 ): SubcommandDefinition => ({
-  name: 'duel',
-  summary: 'Rank sibling todos by pairwise comparison.',
+  name: 'pick',
+  summary: 'Pick a branch winner or run a comparison.',
   aliases: [],
   arguments: [
     {
@@ -15,7 +15,7 @@ export const duelDefinition = (
     },
     {
       name: 'duelArgs',
-      summary: 'Internal web duel action tokens.',
+      summary: 'Internal web pick action tokens.',
       kind: 'string',
       variadic: true,
     },
@@ -23,14 +23,14 @@ export const duelDefinition = (
   options: [
     {
       name: 'reset',
-      summary: 'Reset comparisons before starting the duel.',
+      summary: 'Reset comparisons before starting.',
       flag: '--reset',
       kind: 'boolean',
     },
   ],
   examples: [
-    `${prefix}${alias} duel`,
-    `${prefix}${alias} duel 12`,
-    `${prefix}${alias} duel --reset`,
+    `${prefix}${alias} pick`,
+    `${prefix}${alias} pick 12`,
+    `${prefix}${alias} pick --reset`,
   ],
 });

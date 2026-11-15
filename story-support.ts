@@ -38,6 +38,9 @@ export function buildTodoListStoryCommandOutput(params: {
       options: params.listOptions,
     },
     priorityPrompt: null,
+    prioritizing: false,
+    orderRevision: '',
+    activeRootIds: [],
     items: params.items.map((item) => {
       let depth = 0;
       let parentId = item.parent_id;

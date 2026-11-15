@@ -24,6 +24,7 @@ import { adaptHelpCommand } from './commands/help/adapter';
 import { adaptListCommand } from './commands/list/adapter';
 import { adaptMoveCommand } from './commands/move/adapter';
 import { adaptNextCommand } from './commands/next/adapter';
+import { adaptOrderCommand } from './commands/order/adapter';
 import { adaptReviseCommand } from './commands/revise/adapter';
 import { adaptSettingsCommand } from './commands/settings/adapter';
 import { adaptShowCommand } from './commands/show/adapter';
@@ -42,12 +43,13 @@ type TodoSubcommand =
   | 'accept'
   | 'revise'
   | 'decline'
-  | 'duel'
+  | 'pick'
   | 'focus'
   | 'unfocus'
   | 'current'
   | 'next'
   | 'list'
+  | 'order'
   | 'move'
   | 'done'
   | 'delete'
@@ -75,12 +77,13 @@ const subcommandAdapters: Record<TodoSubcommand, TodoCommandAdapter> = {
   accept: adaptAcceptCommand,
   revise: adaptReviseCommand,
   decline: adaptDeclineCommand,
-  duel: adaptDuelCommand,
+  pick: adaptDuelCommand,
   focus: adaptFocusCommand,
   unfocus: adaptUnfocusCommand,
   current: adaptCurrentCommand,
   next: adaptNextCommand,
   list: adaptListCommand,
+  order: adaptOrderCommand,
   move: adaptMoveCommand,
   done: adaptDoneCommand,
   delete: adaptDeleteCommand,
@@ -118,12 +121,13 @@ function isTodoSubcommand(value: string): value is TodoSubcommand {
     value === 'accept' ||
     value === 'revise' ||
     value === 'decline' ||
-    value === 'duel' ||
+    value === 'pick' ||
     value === 'focus' ||
     value === 'unfocus' ||
     value === 'current' ||
     value === 'next' ||
     value === 'list' ||
+    value === 'order' ||
     value === 'move' ||
     value === 'done' ||
     value === 'delete' ||

@@ -39,6 +39,9 @@ export function adaptListCommand(
             options: { ...params.parsed.options },
           },
           priorityPrompt: null,
+          prioritizing: false,
+          orderRevision: '',
+          activeRootIds: [],
           items: [],
         }),
         {
@@ -68,6 +71,9 @@ export function adaptListCommand(
       options: { ...params.parsed.options },
     },
     priorityPrompt: result.priorityPrompt,
+    prioritizing: result.prioritizing,
+    orderRevision: result.orderRevision,
+    activeRootIds: result.activeRootIds,
     items: result.items,
   });
 

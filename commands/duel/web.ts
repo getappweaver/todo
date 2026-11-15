@@ -12,19 +12,15 @@ import { createListRepresentation } from '../list/representation/builder';
 
 import {
   renderChampionQuestion,
-  renderDuelQuestion,
   renderDuelShell,
   type ChampionContext,
   type DuelButton,
   type DuelTodoItem,
 } from './component';
 import {
-  clearChampionScopeSkips,
   findNextChampionScope,
   getChampionScope,
-  getNextTournamentPairForScope,
   getRankedSiblings,
-  getResolvedChampionChildren,
   getStaleChampionCandidate,
   keepChampion,
   recordComparisonWithPrecedence,
@@ -32,10 +28,9 @@ import {
   setChampion,
   skipComparison,
   skipChampionScope,
-  countSkippedComparisonsInScope,
   wouldContradict,
 } from './db';
-import type { ChampionScope, ChampionTodo, RankedTodo } from './representation';
+import type { ChampionScope, RankedTodo } from './representation';
 
 type HandleDuelWebActionProps = {
   db: Database;
@@ -49,6 +44,7 @@ type RenderDuelScopeProps = {
   commandAlias: string;
   parentId: number | null;
   returnRootId: number | null;
+  reorderMode: boolean;
   notice: string | null;
 };
 
@@ -60,6 +56,7 @@ type DuelWebActionProps = {
   commandAlias: string;
   parentId: number | null;
   returnRootId: number | null;
+  reorderMode: boolean;
   actionArgs: string[];
 };
 
@@ -92,6 +89,7 @@ function duelWebAction(props: DuelWebActionProps): WebAction {
       ...props.actionArgs,
       'returnRoot',
       props.returnRootId === null ? 'root' : String(props.returnRootId),
+      ...(props.reorderMode ? ['mode', 'reorder'] : []),
     ],
   };
 
@@ -102,7 +100,7 @@ function duelWebAction(props: DuelWebActionProps): WebAction {
   return {
     type: 'command',
     command: props.commandAlias,
-    subcommand: 'duel',
+    subcommand: 'pick',
     arguments: args,
     options: {},
     recordInTimeline: false,
@@ -129,6 +127,12 @@ function parseReturnRootId(actionArgs: string[]): number | null {
   const raw = actionArgs[markerIndex + 1];
 
   return raw === 'root' ? null : parsePositiveInteger(raw);
+}
+
+function parseReorderMode(actionArgs: string[]): boolean {
+  const markerIndex = actionArgs.indexOf('mode');
+
+  return markerIndex >= 0 && actionArgs[markerIndex + 1] === 'reorder';
 }
 
 function parsePrioritizeRootId(
@@ -167,101 +171,51 @@ function todoPathToRoot(db: Database, todoId: number): string[] {
   return path;
 }
 
-function todoIdPathToRoot(db: Database, todoId: number): number[] {
-  const path: number[] = [];
-  let currentId: number | null = todoId;
-
-  while (currentId !== null) {
-    const todo = getTodo(db, currentId);
-
-    if (!todo) {
-      break;
-    }
-
-    path.unshift(todo.id);
-    currentId = todo.parent_id ?? null;
-  }
-
-  return path;
-}
-
 function championContext(props: {
   db: Database;
   scope: ChampionScope;
   rootId: number | null;
 }): ChampionContext {
+  if (props.scope.parentId !== null) {
+    const branchTodo = getTodo(props.db, props.scope.parentId);
+
+    return {
+      parentPath: todoPathToRoot(props.db, props.scope.parentId),
+      currentParentId: props.scope.parentId,
+      rootItems: branchTodo
+        ? [toDuelTodoItemFromTodo(props.db, branchTodo)]
+        : [],
+      defaultExpandedIds: branchTodo ? [branchTodo.id] : [],
+    };
+  }
+
   const rootItems = getRankedSiblings(props.db, props.rootId).map((sibling) =>
     toDuelTodoItem(props.db, sibling),
   );
 
-  if (props.scope.parentId === props.rootId) {
-    return {
-      parentPath:
-        props.scope.parentId === null
-          ? []
-          : todoPathToRoot(props.db, props.scope.parentId),
-      currentParentId: null,
-      rootItems,
-      defaultExpandedIds: [],
-    };
-  }
-
-  const parentPath =
-    props.scope.parentId === null
-      ? []
-      : todoPathToRoot(props.db, props.scope.parentId);
-
-  const expandedPath =
-    props.scope.parentId === null
-      ? []
-      : todoIdPathToRoot(props.db, props.scope.parentId);
-
   return {
-    parentPath,
-    currentParentId: props.scope.parentId,
+    parentPath: [],
+    currentParentId: null,
     rootItems,
-    defaultExpandedIds: expandedPath.filter(
-      (id) => props.rootId === null || id !== props.rootId,
-    ),
+    defaultExpandedIds: [],
   };
-}
-
-function countDirectComparisonsInScope(
-  db: Database,
-  siblings: RankedTodo[],
-): number {
-  if (siblings.length < 2) {
-    return 0;
-  }
-
-  const ids = siblings.map((todo) => todo.id);
-  const placeholders = ids.map(() => '?').join(',');
-
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS c
-       FROM todo_comparisons
-       WHERE winner_id IN (${placeholders})
-         AND loser_id IN (${placeholders})`,
-    )
-    .get(...ids, ...ids) as { c: number } | undefined;
-
-  return Number(row?.c ?? 0);
 }
 
 function renderList(props: {
   db: Database;
   commandAlias: string;
   rootId: number | null;
+  prioritize: boolean;
 }): WebNodeRoot {
   const listArguments = props.rootId === null ? {} : { rootId: props.rootId };
+  const listOptions = props.prioritize ? { prioritize: true } : {};
 
   const result = handleListCommand({
     prefix: '/',
     alias: props.commandAlias,
     db: props.db,
     arguments: listArguments,
-    options: {},
+    options: listOptions,
   });
 
   if (result.type === 'error') {
@@ -282,9 +236,12 @@ function renderList(props: {
       showDescriptions: result.showDescriptions,
       listInvocation: {
         arguments: listArguments,
-        options: {},
+        options: listOptions,
       },
       priorityPrompt: result.type === 'empty' ? null : result.priorityPrompt,
+      prioritizing: result.type === 'empty' ? false : result.prioritizing,
+      orderRevision: result.type === 'empty' ? '' : result.orderRevision,
+      activeRootIds: result.type === 'empty' ? [] : result.activeRootIds,
       items: result.type === 'empty' ? [] : result.items,
     }),
     { prefix: '/' },
@@ -341,29 +298,6 @@ function toDuelTodoItemFromTodo(db: Database, item: Todo): DuelTodoItem {
   };
 }
 
-function formatRepresentativePath(path: RankedTodo[]): string {
-  return path
-    .map((pathItem, index) =>
-      index === 0
-        ? todoLabel(pathItem)
-        : `${'  '.repeat(index)}→ ${todoLabel(pathItem)}`,
-    )
-    .join('\n');
-}
-
-function toChampionRepresentativeItem(item: ChampionTodo): DuelTodoItem {
-  const representative = item.championLeaf;
-
-  return {
-    id: item.id,
-    todo: formatRepresentativePath(item.championPath),
-    status: representative.status,
-    hasChampion: item.championPath.length > 1,
-    selectedChampion: false,
-    children: [],
-  };
-}
-
 function markSelectedChampion(
   item: DuelTodoItem,
   championId: number | null,
@@ -384,6 +318,7 @@ function renderPrioritizeComplete(props: RenderDuelScopeProps): WebNodeRoot {
   debugPrioritize('complete:return-list', {
     parentId: props.parentId,
     returnRootId: props.returnRootId,
+    reorderMode: props.reorderMode,
     notice: props.notice,
   });
 
@@ -391,6 +326,7 @@ function renderPrioritizeComplete(props: RenderDuelScopeProps): WebNodeRoot {
     db: props.db,
     commandAlias: props.commandAlias,
     rootId: props.returnRootId,
+    prioritize: props.reorderMode && props.returnRootId === null,
   });
 }
 
@@ -414,26 +350,6 @@ function renderPrioritizeScope(props: RenderDuelScopeProps): WebNodeRoot {
 function renderPrioritizeFromButton(props: RenderDuelScopeProps): WebNodeRoot {
   if (props.parentId !== null) {
     return renderRefreshChampionPick({ ...props, flowRootId: props.parentId });
-  }
-
-  const stale = getStaleChampionCandidate(props.db, props.parentId);
-
-  if (stale !== null) {
-    clearChampionScopeSkips({
-      db: props.db,
-      parentId: stale.scope.parentId,
-      scopeHash: stale.scope.scopeHash,
-    });
-
-    debugPrioritize('stale-root-button:auto-duel', {
-      rootId: props.parentId,
-      returnRootId: props.returnRootId,
-      scope: describeScope(stale.scope),
-      storedChampionId: stale.stored.championId,
-      storedScopeHash: stale.stored.scopeHash,
-    });
-
-    return renderChampionRepresentativeDuel({ ...props, scope: stale.scope });
   }
 
   return renderPrioritizeScope(props);
@@ -480,6 +396,7 @@ function renderRefreshChampionPick(
         commandAlias: props.commandAlias,
         parentId: props.parentId,
         returnRootId: props.returnRootId,
+        reorderMode: props.reorderMode,
         actionArgs: [
           'prioritizeRefreshPick',
           String(item.id),
@@ -498,168 +415,11 @@ function renderRefreshChampionPick(
           commandAlias: props.commandAlias,
           parentId: props.parentId,
           returnRootId: props.returnRootId,
+          reorderMode: false,
           actionArgs: ['quit'],
         }),
       }),
     ],
-  });
-}
-
-function renderChampionRepresentativeDuel(
-  props: RenderDuelScopeProps & { scope: ChampionScope },
-): WebNodeRoot {
-  const representativeChildren = getResolvedChampionChildren(
-    props.db,
-    props.scope,
-  );
-
-  const pair = getNextTournamentPairForScope({
-    db: props.db,
-    parentId: props.scope.parentId,
-    skipScopeHash: props.scope.scopeHash,
-    ranked: representativeChildren,
-  });
-
-  debugPrioritize('representative-duel', {
-    rootId: props.parentId,
-    scope: describeScope(props.scope),
-    representativeScope: describeScope({
-      ...props.scope,
-      children: representativeChildren,
-    }),
-    pair,
-  });
-
-  if (!pair) {
-    const top = representativeChildren[0];
-
-    if (top) {
-      setChampion({
-        db: props.db,
-        parentId: props.scope.parentId,
-        scopeHash: props.scope.scopeHash,
-        championId: top.id,
-        source: 'prioritize',
-      });
-
-      debugPrioritize('representative-duel:set-scope-champion', {
-        parentId: props.scope.parentId,
-        scopeHash: props.scope.scopeHash,
-        championId: top.id,
-      });
-    }
-
-    return renderPrioritizeScope(props);
-  }
-
-  const byId = new Map(representativeChildren.map((item) => [item.id, item]));
-  const itemA = byId.get(pair.aId);
-  const itemB = byId.get(pair.bId);
-
-  if (!itemA || !itemB) {
-    return renderPrioritizeScope({
-      ...props,
-      notice:
-        'This priority duel changed. Recalculated the next needed choice.',
-    });
-  }
-
-  const remaining = representativeChildren.filter(
-    (item) => item.id !== itemA.id && item.id !== itemB.id,
-  );
-
-  const totalQuestions = Math.max(representativeChildren.length - 1, 1);
-
-  const completedQuestions = countDirectComparisonsInScope(
-    props.db,
-    representativeChildren,
-  );
-
-  const skippedQuestions = countSkippedComparisonsInScope({
-    db: props.db,
-    ranked: representativeChildren,
-    scopeHash: props.scope.scopeHash,
-  });
-
-  const currentQuestion = Math.min(
-    completedQuestions + skippedQuestions + 1,
-    totalQuestions,
-  );
-
-  return renderDuelQuestion({
-    commandAlias: props.commandAlias,
-    parentId: props.scope.parentId,
-    title: scopeTitle(props.db, props.scope.parentId),
-    notice: props.notice,
-    question: `Champion tournament ${currentQuestion} of ~${totalQuestions}: which should you do first?`,
-    a: {
-      label: 'A',
-      item: toChampionRepresentativeItem(itemA),
-      storyTargetId: null,
-      action: duelWebAction({
-        commandAlias: props.commandAlias,
-        parentId: props.scope.parentId,
-        returnRootId: props.returnRootId,
-        actionArgs: [
-          'prioritizeAnswer',
-          String(itemA.id),
-          String(itemB.id),
-          props.scope.scopeHash,
-          'prioritizeRoot',
-          props.parentId === null ? 'root' : String(props.parentId),
-        ],
-      }),
-    },
-    b: {
-      label: 'B',
-      item: toChampionRepresentativeItem(itemB),
-      storyTargetId: null,
-      action: duelWebAction({
-        commandAlias: props.commandAlias,
-        parentId: props.scope.parentId,
-        returnRootId: props.returnRootId,
-        actionArgs: [
-          'prioritizeAnswer',
-          String(itemB.id),
-          String(itemA.id),
-          props.scope.scopeHash,
-          'prioritizeRoot',
-          props.parentId === null ? 'root' : String(props.parentId),
-        ],
-      }),
-    },
-    actions: [
-      duelButton({
-        label: 'Skip',
-        className: null,
-        storyTargetId: null,
-        action: duelWebAction({
-          commandAlias: props.commandAlias,
-          parentId: props.scope.parentId,
-          returnRootId: props.returnRootId,
-          actionArgs: [
-            'prioritizeDuelSkip',
-            String(itemA.id),
-            String(itemB.id),
-            props.scope.scopeHash,
-            'prioritizeRoot',
-            props.parentId === null ? 'root' : String(props.parentId),
-          ],
-        }),
-      }),
-      duelButton({
-        label: 'Quit',
-        className: null,
-        storyTargetId: null,
-        action: duelWebAction({
-          commandAlias: props.commandAlias,
-          parentId: props.parentId,
-          returnRootId: props.returnRootId,
-          actionArgs: ['quit'],
-        }),
-      }),
-    ],
-    remaining: remaining.map(toChampionRepresentativeItem),
   });
 }
 
@@ -667,18 +427,6 @@ function renderChampionScope(
   props: RenderDuelScopeProps & { scope: ChampionScope },
 ): WebNodeRoot {
   const stale = getStaleChampionCandidate(props.db, props.scope.parentId);
-
-  if (stale !== null && props.scope.parentId === props.parentId) {
-    debugPrioritize('stale-top-scope:auto-duel', {
-      rootId: props.parentId,
-      returnRootId: props.returnRootId,
-      scope: describeScope(props.scope),
-      storedChampionId: stale.stored.championId,
-      storedScopeHash: stale.stored.scopeHash,
-    });
-
-    return renderChampionRepresentativeDuel(props);
-  }
 
   if (stale !== null && stale.scope.scopeHash === props.scope.scopeHash) {
     debugPrioritize('stale-prompt', {
@@ -715,6 +463,7 @@ function renderChampionScope(
             commandAlias: props.commandAlias,
             parentId: props.scope.parentId,
             returnRootId: props.returnRootId,
+            reorderMode: props.reorderMode,
             actionArgs: isStaleChampion
               ? [
                   'prioritizeKeepChampion',
@@ -742,6 +491,7 @@ function renderChampionScope(
             commandAlias: props.commandAlias,
             parentId: props.scope.parentId,
             returnRootId: props.returnRootId,
+            reorderMode: props.reorderMode,
             actionArgs: [
               'prioritizeKeepChampion',
               String(stale.champion.id),
@@ -759,6 +509,7 @@ function renderChampionScope(
             commandAlias: props.commandAlias,
             parentId: props.scope.parentId,
             returnRootId: props.returnRootId,
+            reorderMode: props.reorderMode,
             actionArgs: [
               'prioritizeSkip',
               props.scope.scopeHash,
@@ -775,15 +526,12 @@ function renderChampionScope(
             commandAlias: props.commandAlias,
             parentId: props.parentId,
             returnRootId: props.returnRootId,
+            reorderMode: false,
             actionArgs: ['quit'],
           }),
         }),
       ],
     });
-  }
-
-  if (props.scope.parentId === props.parentId) {
-    return renderChampionRepresentativeDuel(props);
   }
 
   return renderChampionQuestion({
@@ -804,6 +552,7 @@ function renderChampionScope(
         commandAlias: props.commandAlias,
         parentId: props.scope.parentId,
         returnRootId: props.returnRootId,
+        reorderMode: props.reorderMode,
         actionArgs: [
           'prioritizePick',
           String(item.id),
@@ -822,6 +571,7 @@ function renderChampionScope(
           commandAlias: props.commandAlias,
           parentId: props.scope.parentId,
           returnRootId: props.returnRootId,
+          reorderMode: props.reorderMode,
           actionArgs: [
             'prioritizeSkip',
             props.scope.scopeHash,
@@ -838,6 +588,7 @@ function renderChampionScope(
           commandAlias: props.commandAlias,
           parentId: props.parentId,
           returnRootId: props.returnRootId,
+          reorderMode: false,
           actionArgs: ['quit'],
         }),
       }),
@@ -851,6 +602,7 @@ export function handleDuelWebAction(
   const action = props.actionArgs[0] ?? 'prioritize';
   const returnRootId = parseReturnRootId(props.actionArgs);
   const prioritizeRootId = parsePrioritizeRootId(props.actionArgs);
+  const reorderMode = parseReorderMode(props.actionArgs);
 
   if (action.startsWith('prioritize')) {
     debugPrioritize('action', {
@@ -858,6 +610,7 @@ export function handleDuelWebAction(
       parentId: props.parentId,
       returnRootId,
       prioritizeRootId,
+      reorderMode,
       actionArgs: props.actionArgs,
     });
   }
@@ -868,6 +621,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: props.parentId,
       returnRootId,
+      reorderMode,
       notice: null,
     });
   }
@@ -878,6 +632,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: props.parentId,
       returnRootId,
+      reorderMode,
       notice: null,
     });
   }
@@ -916,6 +671,7 @@ export function handleDuelWebAction(
         commandAlias: props.commandAlias,
         parentId: flowRootId,
         returnRootId,
+        reorderMode,
         notice:
           'This priority question changed. Recalculated the next needed choice.',
       });
@@ -942,6 +698,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: flowRootId,
       returnRootId,
+      reorderMode,
       notice: null,
     });
   }
@@ -980,6 +737,7 @@ export function handleDuelWebAction(
         parentId: props.parentId,
         flowRootId,
         returnRootId,
+        reorderMode,
         notice:
           'This priority question changed. Recalculated the current choices.',
       });
@@ -1008,6 +766,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: flowRootId,
       returnRootId,
+      reorderMode,
       notice: null,
     });
   }
@@ -1047,6 +806,7 @@ export function handleDuelWebAction(
         commandAlias: props.commandAlias,
         parentId: flowRootId,
         returnRootId,
+        reorderMode,
         notice:
           'This priority question changed. Recalculated the next needed choice.',
       });
@@ -1075,6 +835,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: flowRootId,
       returnRootId,
+      reorderMode,
       notice: null,
     });
   }
@@ -1106,6 +867,7 @@ export function handleDuelWebAction(
         commandAlias: props.commandAlias,
         parentId: flowRootId,
         returnRootId,
+        reorderMode,
         notice:
           'This priority question changed. Recalculated the next needed choice.',
       });
@@ -1124,6 +886,7 @@ export function handleDuelWebAction(
         parentId: props.parentId,
         flowRootId,
         returnRootId,
+        reorderMode,
         notice: null,
       });
     }
@@ -1141,6 +904,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: flowRootId,
       returnRootId,
+      reorderMode,
       notice: null,
     });
   }
@@ -1185,6 +949,7 @@ export function handleDuelWebAction(
         commandAlias: props.commandAlias,
         parentId: flowRootId,
         returnRootId,
+        reorderMode,
         notice:
           'This priority duel changed. Recalculated the next needed choice.',
       });
@@ -1208,6 +973,7 @@ export function handleDuelWebAction(
         commandAlias: props.commandAlias,
         parentId: flowRootId,
         returnRootId,
+        reorderMode,
         notice: 'Updated earlier priority results to keep that choice.',
       });
     }
@@ -1230,6 +996,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: flowRootId,
       returnRootId,
+      reorderMode,
       notice: null,
     });
   }
@@ -1274,6 +1041,7 @@ export function handleDuelWebAction(
         commandAlias: props.commandAlias,
         parentId: flowRootId,
         returnRootId,
+        reorderMode,
         notice:
           'This priority duel changed. Recalculated the next needed choice.',
       });
@@ -1299,6 +1067,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: flowRootId,
       returnRootId,
+      reorderMode,
       notice: 'Skipped this duel for now.',
     });
   }
@@ -1329,6 +1098,7 @@ export function handleDuelWebAction(
         commandAlias: props.commandAlias,
         parentId: flowRootId,
         returnRootId,
+        reorderMode,
         notice:
           'This priority question changed. Recalculated the next needed choice.',
       });
@@ -1352,6 +1122,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: flowRootId,
       returnRootId,
+      reorderMode,
       notice: 'Skipped this branch for now.',
     });
   }
@@ -1369,6 +1140,7 @@ export function handleDuelWebAction(
         commandAlias: props.commandAlias,
         parentId: returnRootId,
         returnRootId: returnRootId,
+        reorderMode,
         notice: 'That item is no longer active in this branch.',
       });
     }
@@ -1386,6 +1158,7 @@ export function handleDuelWebAction(
       commandAlias: props.commandAlias,
       parentId: returnRootId,
       returnRootId: returnRootId,
+      reorderMode,
       notice: 'Manual champion set. Continuing priority recalculation.',
     });
   }
@@ -1395,6 +1168,7 @@ export function handleDuelWebAction(
       db: props.db,
       commandAlias: props.commandAlias,
       rootId: returnRootId,
+      prioritize: false,
     });
   }
 
@@ -1403,6 +1177,7 @@ export function handleDuelWebAction(
     commandAlias: props.commandAlias,
     parentId: props.parentId,
     returnRootId,
+    reorderMode,
     notice: null,
   });
 }

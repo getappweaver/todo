@@ -22,8 +22,6 @@ The inventory is not yet consumed by the landing generator.
 
 ![Add todos on mobile](landing/assets/todo-add-mobile.gif)
 
-![Prioritize todos with duels](landing/assets/todo-duel-mobile.gif)
-
 ## Commands
 
 | Command | Description |

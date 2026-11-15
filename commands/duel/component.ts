@@ -246,6 +246,7 @@ function renderTodoTree(item: DuelTodoItem): WebNode[] {
     defaultExpandedIds: new Set(),
     focusedItemId: null,
     storyTargetPrefix: null,
+    reorderIds: null,
   });
 }
 
@@ -569,6 +570,7 @@ function renderChampionChoiceTree(props: {
       defaultExpandedIds,
       focusedItemId: null,
       storyTargetPrefix: 'todo-champion-tree-toggle-',
+      reorderIds: null,
     }),
   };
 }
@@ -613,7 +615,7 @@ export function renderDuelShell(props: {
     version: 1,
     meta: {
       command: props.commandAlias,
-      subcommand: 'duel',
+      subcommand: 'pick',
       arguments:
         props.parentId === null
           ? { duelArgs: ['web'] }

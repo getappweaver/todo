@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite';
 
+import { getRootOrderSnapshot } from '../../db/root-order';
 import { rowToTodo } from '../../db/todo-row';
 import { getFocusId } from '../../db/todos';
 import type { Todo } from '../../types/todos';
@@ -62,26 +63,6 @@ function compareSortOrder(a: Todo, b: Todo): number {
   }
 
   return a.created_at - b.created_at;
-}
-
-function compareSiblings(a: RankedTodo, b: RankedTodo): number {
-  if (a.win_rate === null && b.win_rate === null) {
-    return compareSortOrder(a, b);
-  }
-
-  if (a.win_rate === null) {
-    return 1;
-  }
-
-  if (b.win_rate === null) {
-    return -1;
-  }
-
-  if (b.win_rate !== a.win_rate) {
-    return b.win_rate - a.win_rate;
-  }
-
-  return compareSortOrder(a, b);
 }
 
 export function getParentId(args: string[], db: Database): number | null {
@@ -156,7 +137,32 @@ export function getRankedSiblings(
     };
   });
 
-  ranked.sort(compareSiblings);
+  if (parentId === null) {
+    const activeOrder = getRootOrderSnapshot(db).activeRootIds;
+    const rank = new Map(activeOrder.map((id, index) => [id, index]));
+
+    ranked.sort((a, b) => {
+      const ra = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+      const rb = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+
+      return ra !== rb ? ra - rb : compareSortOrder(a, b);
+    });
+  } else {
+    ranked.sort(compareSortOrder);
+
+    const stored = getStoredChampion(db, parentId);
+
+    if (stored !== null) {
+      const winnerIndex = ranked.findIndex(
+        (item) => item.id === stored.championId,
+      );
+
+      if (winnerIndex > 0) {
+        const [winner] = ranked.splice(winnerIndex, 1);
+        ranked.unshift(winner);
+      }
+    }
+  }
 
   return ranked;
 }
@@ -636,6 +642,16 @@ export function getChampionScope(
   });
 
   const scopeHash = scopeHashForChildren(children);
+
+  if (parentId === null) {
+    return {
+      parentId: null,
+      scopeHash,
+      children,
+      currentChampionId: children[0]?.id ?? null,
+    };
+  }
+
   const stored = getValidStoredChampion({ db, parentId, scopeHash });
 
   return {
@@ -659,6 +675,10 @@ export function getStaleChampionCandidate(
   db: Database,
   parentId: number | null,
 ): StaleChampionCandidate | null {
+  if (parentId === null) {
+    return null;
+  }
+
   const scope = getChampionScope(db, parentId);
 
   if (scope.currentChampionId !== null) {
@@ -690,6 +710,10 @@ export function findNextChampionScope(
     if (unresolved !== null) {
       return unresolved;
     }
+  }
+
+  if (parentId === null) {
+    return null;
   }
 
   return scope.children.length >= 2 &&

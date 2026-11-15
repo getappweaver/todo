@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite';
 
+import { getRootOrderSnapshot } from '../../db/root-order';
 import type { Todo, TodoWithWinStats } from '../../types/todos';
 
 import {
@@ -169,6 +170,9 @@ export type ListCommandResult =
       view: 'tree' | 'flat';
       showDescriptions: boolean;
       priorityPrompt: PriorityPrompt | null;
+      prioritizing: boolean;
+      orderRevision: string;
+      activeRootIds: number[];
       items: Array<{
         id: number;
         parentId: number | null;
@@ -291,6 +295,7 @@ export function handleListCommand(params: {
   const championOnly = parseOptionalBoolean(params.options.champion);
   const showDescriptions = parseOptionalBoolean(params.options.desc);
   const level = parseOptionalInteger(params.options.level);
+  const prioritize = parseOptionalBoolean(params.options.prioritize);
 
   const parsedFilters = filters?.map((filter) =>
     ListStatusFilterSchema.safeParse(filter),
@@ -415,13 +420,19 @@ export function handleListCommand(params: {
   }
 
   const priorityPrompt = priorityPromptForRoot({ db: params.db, rootId });
+  const rootOrder = getRootOrderSnapshot(params.db);
+  const view = flat || level !== null ? 'flat' : 'tree';
+  const prioritizing = prioritize && rootId === null && view === 'tree';
 
   return {
     type: 'success',
     scope,
-    view: flat || level !== null ? 'flat' : 'tree',
+    view,
     showDescriptions,
     priorityPrompt,
+    prioritizing,
+    orderRevision: rootOrder.orderRevision,
+    activeRootIds: rootOrder.activeRootIds,
     items: todos.map((todo: TodoWithWinStats) => ({
       id: todo.id,
       parentId:

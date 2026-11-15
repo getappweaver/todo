@@ -8,6 +8,7 @@ import type {
   UpdateTodoInput,
 } from '../types/todos';
 
+import { getRootOrderSnapshot } from './root-order';
 import { rowToTodo } from './todo-row';
 
 type TodoWithWin = Todo & {
@@ -39,26 +40,6 @@ function compareSortOrder(a: Todo, b: Todo): number {
   }
 
   return a.created_at - b.created_at;
-}
-
-function compareSiblings(a: TodoWithWin, b: TodoWithWin): number {
-  if (a.win_rate === null && b.win_rate === null) {
-    return compareSortOrder(a, b);
-  }
-
-  if (a.win_rate === null) {
-    return 1;
-  }
-
-  if (b.win_rate === null) {
-    return -1;
-  }
-
-  if (b.win_rate !== a.win_rate) {
-    return b.win_rate - a.win_rate;
-  }
-
-  return compareSortOrder(a, b);
 }
 
 function listTodosDepthFirstWinOrdered(db: Database): TodoWithWinStats[] {
@@ -123,8 +104,45 @@ function listTodosDepthFirstWinOrdered(db: Database): TodoWithWinStats[] {
     byParent.get(key)!.push(todo);
   }
 
-  for (const items of byParent.values()) {
-    items.sort(compareSiblings);
+  const rootOrder = getRootOrderSnapshot(db).rootIds;
+  const rootRank = new Map(rootOrder.map((id, index) => [id, index]));
+
+  const championRows = db
+    .prepare(
+      'SELECT parent_id, champion_id FROM todo_champions WHERE parent_id IS NOT NULL',
+    )
+    .all() as { parent_id: number; champion_id: number }[];
+
+  const branchWinners = new Map(
+    championRows.map((row) => [Number(row.parent_id), Number(row.champion_id)]),
+  );
+
+  for (const [parentId, items] of byParent.entries()) {
+    if (parentId === null) {
+      items.sort((a, b) => {
+        const ra = rootRank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+        const rb = rootRank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+
+        return ra !== rb ? ra - rb : compareSortOrder(a, b);
+      });
+    } else {
+      items.sort(compareSortOrder);
+
+      const winnerId = branchWinners.get(parentId);
+
+      if (winnerId !== undefined) {
+        const winnerIndex = items.findIndex((item) => item.id === winnerId);
+
+        if (
+          winnerIndex > 0 &&
+          items[winnerIndex].status !== 'done' &&
+          items[winnerIndex].status !== 'cancelled'
+        ) {
+          const [winner] = items.splice(winnerIndex, 1);
+          items.unshift(winner);
+        }
+      }
+    }
   }
 
   const out: TodoWithWinStats[] = [];

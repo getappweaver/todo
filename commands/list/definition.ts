@@ -52,6 +52,12 @@ export const listDefinition = (
       flag: '--level',
       kind: 'integer',
     },
+    {
+      name: 'prioritize',
+      summary: 'Render root items with drag handles for reordering.',
+      flag: '--prioritize',
+      kind: 'boolean',
+    },
   ],
   examples: [
     `${prefix}${alias} list`,

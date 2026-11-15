@@ -56,6 +56,14 @@ function migrateTodoSchema(db: Database): void {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS todo_root_order (
+      id         INTEGER PRIMARY KEY CHECK (id = 1),
+      item_ids   TEXT NOT NULL CHECK (json_valid(item_ids) AND json_type(item_ids) = 'array'),
+      revision   INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+    )
+  `);
+
   db.run(
     'CREATE INDEX IF NOT EXISTS idx_comparisons_winner ON todo_comparisons(winner_id)',
   );

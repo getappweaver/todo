@@ -57,21 +57,18 @@ Implementation: [AI command](commands/ai/definition.ts),
 [accept](commands/accept/definition.ts), [decline](commands/decline/definition.ts),
 and [revise](commands/revise/definition.ts).
 
-## Prioritize with duels {#todo.prioritize-duels}
+## Prioritize root order and branch winners {#todo.prioritize-duels}
 - Status: stable
-- Tags: tasks, prioritization, comparison
+- Tags: tasks, prioritization, ordering
 - Surfaces: web, cli, dm
 - Showcase: app
 - Order: 30
-- Media:
-  - poster: landing/assets/todo-prioritize-duels-poster.png
-  - video: landing/assets/todo-prioritize-duels.webm
 
-Choose between sibling tasks in pairwise comparisons to establish their ranking.
-Start at the root or a selected parent with `/todo duel [parentId]`; use
-`--reset` to reset comparisons before starting again.
+Click **Prioritize** in the web list to review any changed branch winners
+("Pick" / "Keep") and then drag root tasks using the `⠿` handle into your
+desired priority order. Click **Done Prioritize** when finished.
 
-Implementation: [duel command](commands/duel/definition.ts).
+Implementation: [order command](commands/order/definition.ts) and [pick command](commands/duel/definition.ts).
 Background: [duel design and implementation history](docs/TODO_DUEL_IMPLEMENTATION_PLAN.md).
 
 ## Show only champions {#todo.filter-champions}

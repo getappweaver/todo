@@ -322,7 +322,7 @@ function prioritizeRefresh(
 
   return {
     command: representation.meta.command,
-    subcommand: 'duel',
+    subcommand: 'pick',
     arguments: {
       ...(rootId === null ? {} : { parentId: rootId }),
       duelArgs: ['web', 'prioritizeFlow', 'returnRoot', String(returnRoot)],
@@ -353,11 +353,16 @@ function siblingGroupRefresh(params: {
     return listRefresh(params.representation);
   }
 
-  return activeSiblingCount(params.representation, params.parentId) +
-    params.activeDelta >=
-    2
-    ? prioritizeRefresh(params.representation)
-    : listRefresh(params.representation);
+  if (
+    params.parentId !== null &&
+    activeSiblingCount(params.representation, params.parentId) +
+      params.activeDelta >=
+      2
+  ) {
+    return prioritizeRefresh(params.representation);
+  }
+
+  return listRefresh(params.representation);
 }
 
 function rowHighlightTargetId(itemId: number): string {
@@ -1432,46 +1437,26 @@ function duelTodoAction(
   return {
     type: 'command',
     command: representation.meta.command,
-    subcommand: 'duel',
+    subcommand: 'pick',
     arguments: {
       parentId: item.id,
-      duelArgs: [
-        'web',
-        'prioritizeFlow',
-        'prioritizeRoot',
-        String(returnRoot),
-        'returnRoot',
-        String(returnRoot),
-      ],
+      duelArgs: ['web', 'prioritize', 'returnRoot', String(returnRoot)],
     },
     options: {},
     recordInTimeline: false,
   };
 }
 
-function setChampionAction(
+function preservedListOptionsWithoutPrioritize(
   representation: ListRepresentation,
-  item: ListItem,
-): WebAction {
-  const returnRoot = representation.data.scope?.rootId ?? 'root';
-
-  return {
-    type: 'command',
-    command: representation.meta.command,
-    subcommand: 'duel',
-    arguments: {
-      ...(item.parentId === null ? {} : { parentId: item.parentId }),
-      duelArgs: [
-        'web',
-        'setChampion',
-        String(item.id),
-        'returnRoot',
-        String(returnRoot),
-      ],
-    },
-    options: {},
-    recordInTimeline: false,
+): Record<string, unknown> {
+  const options: Record<string, unknown> = {
+    ...representation.data.listInvocation.options,
   };
+
+  delete options.prioritize;
+
+  return options;
 }
 
 function prioritizeTodoAction(representation: ListRepresentation): WebAction {
@@ -1481,12 +1466,31 @@ function prioritizeTodoAction(representation: ListRepresentation): WebAction {
   return {
     type: 'command',
     command: representation.meta.command,
-    subcommand: 'duel',
+    subcommand: 'pick',
     arguments: {
       ...(rootId === null ? {} : { parentId: rootId }),
-      duelArgs: ['web', 'prioritizeFlow', 'returnRoot', String(returnRoot)],
+      duelArgs: [
+        'web',
+        'prioritizeFlow',
+        'returnRoot',
+        String(returnRoot),
+        'mode',
+        'reorder',
+      ],
     },
     options: {},
+    recordInTimeline: false,
+  };
+}
+
+function donePrioritizeAction(representation: ListRepresentation): WebAction {
+  return {
+    type: 'command',
+    command: representation.meta.command,
+    subcommand: 'list',
+    arguments: { ...representation.data.listInvocation.arguments },
+    options: preservedListOptionsWithoutPrioritize(representation),
+    presentation: 'run',
     recordInTimeline: false,
   };
 }
@@ -1501,6 +1505,19 @@ function needsPrioritization(representation: ListRepresentation): boolean {
 function buildPrioritizeButton(
   representation: ListRepresentation,
 ): WebNode | null {
+  if (representation.data.prioritizing) {
+    return {
+      type: 'element',
+      tag: 'button',
+      props: {
+        label: 'Done Prioritize',
+        className: 'todo-new-root-button',
+        storyTargetId: 'todo-prioritize-done',
+        action: donePrioritizeAction(representation),
+      },
+    };
+  }
+
   if (!needsPrioritization(representation)) {
     return null;
   }
@@ -1643,17 +1660,9 @@ function renderTodoRowActionsMenu(
         type: 'element',
         tag: 'menuItem',
         props: {
-          label: 'Prioritize here',
+          label: 'Pick a winner',
           storyTargetId: `todo-duel-${item.id}`,
           action: duelTodoAction(representation, item),
-        },
-      },
-      {
-        type: 'element',
-        tag: 'menuItem',
-        props: {
-          label: 'Make top priority here',
-          action: setChampionAction(representation, item),
         },
       },
       {
@@ -1969,6 +1978,11 @@ export function renderListWeb(
     if (tree.length === 0) {
       treeChildren.push(buildEmptyTodoListPrompt(representation));
     } else {
+      const canReorderRoots =
+        representation.data.prioritizing &&
+        representation.data.scope === null &&
+        representation.data.activeRootIds.length > 1;
+
       treeChildren.push({
         type: 'element',
         tag: 'tree',
@@ -1993,6 +2007,26 @@ export function renderListWeb(
               ),
             },
           ],
+          ...(canReorderRoots
+            ? {
+                reorder: {
+                  field: 'items',
+                  target: 'options' as const,
+                  action: {
+                    type: 'command' as const,
+                    command: representation.meta.command,
+                    subcommand: 'order',
+                    arguments: {},
+                    options: {
+                      ...preservedListOptionsWithoutPrioritize(representation),
+                      revision: representation.data.orderRevision,
+                    },
+                    presentation: 'run' as const,
+                    recordInTimeline: false,
+                  },
+                },
+              }
+            : {}),
         },
         children: renderTodoTreeItems({
           nodes: tree,
@@ -2008,6 +2042,9 @@ export function renderListWeb(
           ),
           focusedItemId: context.focusedTodoId ?? null,
           storyTargetPrefix: 'todo-tree-toggle-',
+          reorderIds: canReorderRoots
+            ? new Set(representation.data.activeRootIds)
+            : null,
         }),
       });
     }
@@ -2038,7 +2075,7 @@ export function renderListWeb(
     widgetHelp: {
       title: 'Todo app',
       body: [
-        'The easiest and most effective planning app. Prioritize tasks with smart dueling sessions, create or edit todos with AI, and copy structured plans into your prompts.',
+        'The easiest and most effective planning app. Prioritize root tasks by dragging and dropping, pick branch winners, create or edit todos with AI, and copy structured plans into your prompts.',
       ],
       stories: [
         {
@@ -2058,9 +2095,9 @@ export function renderListWeb(
         },
         {
           id: 'todo-duel-prioritize',
-          title: 'Prioritize todos with duel',
+          title: 'Prioritize todos',
           description:
-            'Compare sibling tasks pair by pair to rank the next work to do.',
+            'Pick branch winners and drag root tasks into priority order.',
           pluginAlias: representation.meta.command,
           iconUrl: '/plugin-icons/todo/commands__list__renderers__list.svg',
         },
