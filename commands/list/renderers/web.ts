@@ -1377,15 +1377,28 @@ function setTodoInProgressAction(
   };
 }
 
+function childRemovedRefresh(
+  representation: ListRepresentation,
+  item: ListItem,
+): WebRefreshPayload {
+  if (item.parentId === null) {
+    return prioritizeRefresh(representation);
+  }
+
+  return {
+    ...siblingGroupRefresh({
+      representation,
+      parentId: item.parentId,
+      activeDelta: item.status === 'done' ? 0 : -1,
+    }),
+    highlightTargetIds: [rowHighlightTargetId(item.parentId)],
+  };
+}
+
 function setTodoDoneAction(
   representation: ListRepresentation,
   item: ListItem,
 ): WebAction {
-  const refresh =
-    item.parentId === null
-      ? prioritizeRefresh(representation)
-      : listRefreshHighlightingTodo(representation, item.parentId);
-
   return {
     type: 'command',
     command: representation.meta.command,
@@ -1393,7 +1406,7 @@ function setTodoDoneAction(
     arguments: { id: item.id },
     options: {},
     recordInTimeline: false,
-    refresh,
+    refresh: childRemovedRefresh(representation, item),
   };
 }
 
@@ -1407,10 +1420,7 @@ function deleteTodoAction(
     subcommand: 'delete',
     arguments: { id: item.id },
     options: {},
-    refresh:
-      item.parentId === null
-        ? prioritizeRefresh(representation)
-        : listRefreshHighlightingTodo(representation, item.parentId),
+    refresh: childRemovedRefresh(representation, item),
   };
 }
 

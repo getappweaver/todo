@@ -4,9 +4,13 @@ All notable changes for each version are listed under the corresponding `v*.*.*`
 Tags and this file are updated by the post-commit hook when you commit with `--patch`, `--minor`, or `--major` (see CONTRIBUTING.md).
 You can also run `bun run release:changelog` to rewrite this file from tags.
 
+## [v6.0.1] - 2026-11-16
+
+- fix: pick a winner after winner is done (90f56ed)
+
 ## [v6.0.0] - 2026-11-15
 
-- feat: added reorder drag n drop replacement of dueling (f42c397)
+- feat: added reorder drag n drop replacement of dueling (a9060ed)
 
 ## [v5.12.0] - 2026-11-14
 
